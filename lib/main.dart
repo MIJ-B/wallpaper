@@ -324,9 +324,7 @@ class SpaceGlobePainter extends CustomPainter {
   bool shouldRepaint(covariant SpaceGlobePainter oldDelegate) {
     return rotation != oldDelegate.rotation || zoom != oldDelegate.zoom;
   }
-}
-
-class Leg {
+}class Leg {
   final String side;
   final int vertebraIndex;
   final int totalVertebrae;
@@ -542,7 +540,6 @@ class Vertebra {
     canvas.restore();
   }
 }
-
 class SnakeSkeleton {
   final List<Vertebra> vertebrae = [];
   final int numVertebrae;
@@ -777,7 +774,6 @@ class SnakeSkeleton {
     canvas.restore();
   }
 }
-
 class SkeletonPainter extends CustomPainter {
   final SnakeSkeleton snake;
   
@@ -814,3 +810,57 @@ class SkeletonPainter extends CustomPainter {
     
   static final _arrowStroke = Paint()
     ..style = PaintingStyle.stroke;
+    
+  static final _pointPaint = Paint();
+  static final _hookPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+    
+  static final _detailPaint = Paint();
+  static final _skullPaint = Paint();
+  static final _skullStroke = Paint()
+    ..style = PaintingStyle.stroke;
+    
+  static final _orbitPaint = Paint();
+  static final _eyePaint = Paint();
+  static final _jawPaint = Paint();
+  static final _fangPaint = Paint();
+  static final _fangStroke = Paint()
+    ..style = PaintingStyle.stroke;
+    
+  static final _crackPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+
+  SkeletonPainter(this.snake);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _connectionPaint.strokeWidth = 4 * snake.scale;
+    for (int i = 0; i < snake.vertebrae.length - 1; i++) {
+      final v1 = snake.vertebrae[i];
+      final v2 = snake.vertebrae[i + 1];
+      canvas.drawLine(v1.position, v2.position, _connectionPaint);
+    }
+
+    for (int i = snake.vertebrae.length - 1; i >= 0; i--) {
+      snake.vertebrae[i].draw(
+        canvas, 
+        snake.walkPhase, 
+        _bodyPaint, 
+        _strokePaint, 
+        _canalPaint, 
+        _transversePaint,
+        _legPaint,
+        _jointPaint,
+        _clawPaint
+      );
+    }
+
+    snake.drawTail(canvas, _segPaint, _bonePaint, _arrowPaint, _arrowStroke, 
+                   _pointPaint, _hookPaint, _detailPaint);
+    snake.drawSkull(canvas, _skullPaint, _skullStroke, _orbitPaint, _eyePaint, 
+                    _jawPaint, _fangPaint, _fangStroke, _crackPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
