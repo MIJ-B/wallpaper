@@ -34,6 +34,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   bool _isDragging = false;
   double _time = 0;
   late SnakeSkeleton _snake;
+  double _scale = 1.0; // ← VAOVAO: Scale factor
 
   @override
   void initState() {
@@ -56,9 +57,18 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final size = MediaQuery.of(context).size;
+    
+    // ✨ VAOVAO: Calculate scale mifanaraka amin'ny screen size
+    final screenWidth = size.width;
+    final screenHeight = size.height;
+    final minDimension = math.min(screenWidth, screenHeight);
+    
+    // Scale: 0.5x ho an'ny ecran kely, 1.5x ho an'ny lehibe
+    _scale = (minDimension / 800).clamp(0.5, 1.5);
+    
     _dragPosition = Offset(size.width / 2, size.height / 2);
     _lastDragPosition = _dragPosition;
-    _snake = SnakeSkeleton(25, _dragPosition);
+    _snake = SnakeSkeleton(25, _dragPosition, scale: _scale); // ← VAOVAO: scale parameter
   }
 
   @override
@@ -69,28 +79,32 @@ class _SkeletonScreenState extends State<SkeletonScreen>
 
   Offset _getAutoPosition(Size size) {
     final pattern = (_time / 10).floor() % 4;
+    
+    // ✨ VAOVAO: Adjust movement range mifanaraka amin'ny scale
+    final range = 200 * _scale;
+    final smallRange = 150 * _scale;
 
     switch (pattern) {
       case 0:
         return Offset(
-          _lastDragPosition.dx + math.sin(_time) * 200,
-          _lastDragPosition.dy + math.sin(_time * 2) * 150,
+          _lastDragPosition.dx + math.sin(_time) * range,
+          _lastDragPosition.dy + math.sin(_time * 2) * smallRange,
         );
       case 1:
         return Offset(
-          _lastDragPosition.dx + math.sin(_time * 1.5) * 250,
-          _lastDragPosition.dy + math.cos(_time * 0.8) * 100,
+          _lastDragPosition.dx + math.sin(_time * 1.5) * (range * 1.25),
+          _lastDragPosition.dy + math.cos(_time * 0.8) * (range * 0.5),
         );
       case 2:
-        final radius = 100 + math.sin(_time * 0.5) * 80;
+        final radius = (100 + math.sin(_time * 0.5) * 80) * _scale;
         return Offset(
           _lastDragPosition.dx + math.cos(_time * 2) * radius,
           _lastDragPosition.dy + math.sin(_time * 2) * radius,
         );
       case 3:
         return Offset(
-          _lastDragPosition.dx + math.sin(_time * 2) * 200,
-          _lastDragPosition.dy + math.sin(_time * 3) * 120,
+          _lastDragPosition.dx + math.sin(_time * 2) * range,
+          _lastDragPosition.dy + math.sin(_time * 3) * (range * 0.6),
         );
       default:
         return _lastDragPosition;
@@ -142,11 +156,12 @@ class Leg {
   final int numSegments = 3;
   late double baseLength;
   late double segmentLength;
+  final double scale; // ← VAOVAO
   List<LegSegment> segments = [];
 
-  Leg(this.side, this.vertebraIndex, this.totalVertebrae) {
+  Leg(this.side, this.vertebraIndex, this.totalVertebrae, this.scale) {
     final progress = vertebraIndex / totalVertebrae;
-    baseLength = 25 - (progress * 18);
+    baseLength = (25 - (progress * 18)) * scale; // ← VAOVAO: scaled
     segmentLength = baseLength / numSegments;
   }
 
@@ -174,32 +189,27 @@ class Leg {
     }
   }
 
-  void draw(Canvas canvas, double progress) {
-    final thickness = 3.0 - (progress * 1.5);
-    final paint = Paint()
-      ..color = const Color(0xFFB0B0B0)
+  void draw(Canvas canvas, double progress, Paint legPaint, Paint jointPaint, Paint clawPaint) {
+    // ⚡ PERFORMANCE: Reuse paints tsy mamorona vaovao
+    final thickness = (3.0 - (progress * 1.5)) * scale;
+    legPaint
       ..strokeWidth = thickness
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
+      ..color = const Color(0xFFB0B0B0);
 
     for (var seg in segments) {
-      canvas.drawLine(seg.start, seg.end, paint);
+      canvas.drawLine(seg.start, seg.end, legPaint);
 
-      final jointSize = 4.0 - (progress * 2);
-      final jointPaint = Paint()
-        ..color = const Color(0xFFD0D0D0)
-        ..style = PaintingStyle.fill;
-
+      final jointSize = (4.0 - (progress * 2)) * scale;
+      jointPaint.color = const Color(0xFFD0D0D0);
       canvas.drawCircle(seg.start, jointSize, jointPaint);
     }
 
     // Griffes
     if (segments.isNotEmpty) {
       final lastSeg = segments.last;
-      final clawPaint = Paint()
-        ..color = const Color(0xFF888888)
-        ..strokeWidth = 1
-        ..strokeCap = StrokeCap.round;
+      clawPaint
+        ..strokeWidth = 1 * scale
+        ..color = const Color(0xFF888888);
 
       final numClaws = progress < 0.5 ? 3 : 2;
       for (int i = 0; i < numClaws; i++) {
@@ -208,7 +218,7 @@ class Leg {
           lastSeg.end.dx - lastSeg.start.dx,
         );
         final clawAngle = angle + (i - 1) * 0.3;
-        final clawLength = 8.0 - (progress * 4);
+        final clawLength = (8.0 - (progress * 4)) * scale;
         final clawEnd = Offset(
           lastSeg.end.dx + math.cos(clawAngle) * clawLength,
           lastSeg.end.dy + math.sin(clawAngle) * clawLength,
@@ -233,6 +243,7 @@ class Vertebra {
   double angle;
   final int index;
   final int total;
+  final double scale; // ← VAOVAO
   final List<Leg> legs = [];
 
   Vertebra({
@@ -241,10 +252,11 @@ class Vertebra {
     required this.angle,
     required this.index,
     required this.total,
+    required this.scale,
   }) {
     if (index >= 2 && index < total - 3) {
-      legs.add(Leg('left', index, total));
-      legs.add(Leg('right', index, total));
+      legs.add(Leg('left', index, total, scale));
+      legs.add(Leg('right', index, total, scale));
     }
   }
 
@@ -266,14 +278,17 @@ class Vertebra {
     }
   }
 
-  void draw(Canvas canvas, double walkPhase) {
+  void draw(Canvas canvas, double walkPhase, Paint bodyPaint, Paint strokePaint, 
+            Paint canalPaint, Paint transversePaint, Paint legPaint, 
+            Paint jointPaint, Paint clawPaint) {
+    // ⚡ PERFORMANCE: Reuse paints
     final progress = index / total;
     final currentSize = size * (1 - progress * 0.3);
 
     // Dessiner les pattes
     for (var leg in legs) {
       leg.update(position, angle, walkPhase);
-      leg.draw(canvas, progress);
+      leg.draw(canvas, progress, legPaint, jointPaint, clawPaint);
     }
 
     canvas.save();
@@ -281,10 +296,7 @@ class Vertebra {
     canvas.rotate(angle);
 
     // Corps de la vertèbre
-    final bodyPaint = Paint()
-      ..color = const Color(0xFFD8D8D8)
-      ..style = PaintingStyle.fill;
-
+    bodyPaint.color = const Color(0xFFD8D8D8);
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset.zero,
@@ -294,10 +306,9 @@ class Vertebra {
       bodyPaint,
     );
 
-    final strokePaint = Paint()
-      ..color = const Color(0xFF666666)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
+    strokePaint
+      ..strokeWidth = 2 * scale
+      ..color = const Color(0xFF666666);
 
     canvas.drawOval(
       Rect.fromCenter(
@@ -309,7 +320,7 @@ class Vertebra {
     );
 
     // Canal vertébral
-    final canalPaint = Paint()..color = Colors.black;
+    canalPaint.color = Colors.black;
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset.zero,
@@ -322,7 +333,7 @@ class Vertebra {
     // Processus transverses
     final transverseLength = currentSize * 2;
     final transverseWidth = currentSize * 0.6;
-    final transversePaint = Paint()..color = const Color(0xFFC8C8C8);
+    transversePaint.color = const Color(0xFFC8C8C8);
 
     canvas.drawOval(
       Rect.fromCenter(
@@ -365,10 +376,12 @@ class Vertebra {
 class SnakeSkeleton {
   final List<Vertebra> vertebrae = [];
   final int numVertebrae;
-  final double baseSize = 20;
+  final double baseSize;
+  final double scale; // ← VAOVAO
   double walkPhase = 0;
 
-  SnakeSkeleton(this.numVertebrae, Offset initialPosition) {
+  SnakeSkeleton(this.numVertebrae, Offset initialPosition, {this.scale = 1.0})
+      : baseSize = 20 * scale { // ← VAOVAO: scaled base size
     for (int i = 0; i < numVertebrae; i++) {
       final size = baseSize * (1 - (i / numVertebrae) * 0.5);
       vertebrae.add(Vertebra(
@@ -380,6 +393,7 @@ class SnakeSkeleton {
         angle: 0,
         index: i,
         total: numVertebrae,
+        scale: scale,
       ));
     }
   }
@@ -393,7 +407,9 @@ class SnakeSkeleton {
     }
   }
 
-  void drawTail(Canvas canvas) {
+  void drawTail(Canvas canvas, Paint segPaint, Paint bonePaint, Paint arrowPaint, 
+                Paint arrowStroke, Paint pointPaint, Paint hookPaint, Paint detailPaint) {
+    // ⚡ PERFORMANCE: Reuse paints
     final lastVert = vertebrae.last;
     final prevVert = vertebrae[vertebrae.length - 2];
 
@@ -403,7 +419,7 @@ class SnakeSkeleton {
     );
 
     const numTailSegments = 5;
-    const segmentLength = 12.0;
+    final segmentLength = 12.0 * scale;
     double x = lastVert.position.dx;
     double y = lastVert.position.dy;
 
@@ -411,16 +427,15 @@ class SnakeSkeleton {
       final nextX = x + math.cos(angle) * segmentLength;
       final nextY = y + math.sin(angle) * segmentLength;
 
-      final thickness = 3.0 - (i * 0.5);
-      final segPaint = Paint()
+      final thickness = (3.0 - (i * 0.5)) * scale;
+      segPaint
         ..color = const Color(0xFF555555)
-        ..strokeWidth = thickness
-        ..strokeCap = StrokeCap.round;
+        ..strokeWidth = thickness;
 
       canvas.drawLine(Offset(x, y), Offset(nextX, nextY), segPaint);
 
-      final boneSize = 4.0 - (i * 0.6);
-      final bonePaint = Paint()..color = const Color(0xFFD0D0D0);
+      final boneSize = (4.0 - (i * 0.6)) * scale;
+      bonePaint.color = const Color(0xFFD0D0D0);
       canvas.drawCircle(Offset(x, y), boneSize, bonePaint);
 
       x = nextX;
@@ -432,61 +447,59 @@ class SnakeSkeleton {
     canvas.translate(x, y);
     canvas.rotate(angle);
 
-    final arrowPaint = Paint()
-      ..color = const Color(0xFFE0E0E0)
-      ..style = PaintingStyle.fill;
+    arrowPaint.color = const Color(0xFFE0E0E0);
 
     final arrowPath = Path()
       ..moveTo(0, 0)
-      ..lineTo(25, -8)
-      ..lineTo(30, 0)
-      ..lineTo(25, 8)
+      ..lineTo(25 * scale, -8 * scale)
+      ..lineTo(30 * scale, 0)
+      ..lineTo(25 * scale, 8 * scale)
       ..close();
 
     canvas.drawPath(arrowPath, arrowPaint);
 
-    final arrowStroke = Paint()
-      ..color = const Color(0xFF666666)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
+    arrowStroke
+      ..strokeWidth = 2 * scale
+      ..color = const Color(0xFF666666);
     canvas.drawPath(arrowPath, arrowStroke);
 
     // Pointe
-    final pointPaint = Paint()..color = Colors.white;
+    pointPaint.color = Colors.white;
     final pointPath = Path()
-      ..moveTo(25, -5)
-      ..lineTo(35, 0)
-      ..lineTo(25, 5)
+      ..moveTo(25 * scale, -5 * scale)
+      ..lineTo(35 * scale, 0)
+      ..lineTo(25 * scale, 5 * scale)
       ..close();
 
     canvas.drawPath(pointPath, pointPaint);
     canvas.drawPath(pointPath, arrowStroke);
 
     // Crochets
-    final hookPaint = Paint()
+    hookPaint
       ..color = const Color(0xFF888888)
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = 2 * scale;
 
-    canvas.drawLine(const Offset(20, -6), const Offset(18, -12), hookPaint);
-    canvas.drawLine(const Offset(20, 6), const Offset(18, 12), hookPaint);
+    canvas.drawLine(Offset(20 * scale, -6 * scale), Offset(18 * scale, -12 * scale), hookPaint);
+    canvas.drawLine(Offset(20 * scale, 6 * scale), Offset(18 * scale, 12 * scale), hookPaint);
 
     // Détails
-    final detailPaint = Paint()
+    detailPaint
       ..color = const Color(0xFF555555)
-      ..strokeWidth = 1;
+      ..strokeWidth = 1 * scale;
 
     for (int i = 0; i < 3; i++) {
-      final xPos = 5.0 + i * 7;
-      canvas.drawLine(Offset(xPos, -3), Offset(xPos + 3, -6), detailPaint);
-      canvas.drawLine(Offset(xPos, 3), Offset(xPos + 3, 6), detailPaint);
+      final xPos = (5.0 + i * 7) * scale;
+      canvas.drawLine(Offset(xPos, -3 * scale), Offset(xPos + 3 * scale, -6 * scale), detailPaint);
+      canvas.drawLine(Offset(xPos, 3 * scale), Offset(xPos + 3 * scale, 6 * scale), detailPaint);
     }
 
     canvas.restore();
   }
 
-  void drawSkull(Canvas canvas) {
+  void drawSkull(Canvas canvas, Paint skullPaint, Paint skullStroke, Paint orbitPaint, 
+                 Paint eyePaint, Paint jawPaint, Paint fangPaint, Paint fangStroke, 
+                 Paint crackPaint) {
+    // ⚡ PERFORMANCE: Reuse paints
     final head = vertebrae[0];
 
     canvas.save();
@@ -494,82 +507,80 @@ class SnakeSkeleton {
     canvas.rotate(head.angle);
 
     // Crâne principal
-    final skullPaint = Paint()..color = const Color(0xFFE8E8E8);
+    skullPaint.color = const Color(0xFFE8E8E8);
     canvas.drawOval(
-      Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
+      Rect.fromCenter(center: Offset(25 * scale, 0), width: 70 * scale, height: 40 * scale),
       skullPaint,
     );
 
-    final skullStroke = Paint()
-      ..color = const Color(0xFF666666)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
+    skullStroke
+      ..strokeWidth = 2 * scale
+      ..color = const Color(0xFF666666);
 
     canvas.drawOval(
-      Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
+      Rect.fromCenter(center: Offset(25 * scale, 0), width: 70 * scale, height: 40 * scale),
       skullStroke,
     );
 
     // Museau
     final snoutPath = Path()
-      ..moveTo(60, 0)
-      ..lineTo(80, -3)
-      ..lineTo(80, 3)
+      ..moveTo(60 * scale, 0)
+      ..lineTo(80 * scale, -3 * scale)
+      ..lineTo(80 * scale, 3 * scale)
       ..close();
 
     canvas.drawPath(snoutPath, skullPaint);
     canvas.drawPath(snoutPath, skullStroke);
 
     // Orbites
-    final orbitPaint = Paint()..color = Colors.black;
+    orbitPaint.color = Colors.black;
     canvas.drawOval(
-      Rect.fromCenter(center: const Offset(35, -12), width: 20, height: 24),
+      Rect.fromCenter(center: Offset(35 * scale, -12 * scale), width: 20 * scale, height: 24 * scale),
       orbitPaint,
     );
     canvas.drawOval(
-      Rect.fromCenter(center: const Offset(35, 12), width: 20, height: 24),
+      Rect.fromCenter(center: Offset(35 * scale, 12 * scale), width: 20 * scale, height: 24 * scale),
       orbitPaint,
     );
 
     // Yeux rouges
-    final eyePaint = Paint()..color = const Color(0xFFFF0000);
-    canvas.drawCircle(const Offset(35, -12), 5, eyePaint);
-    canvas.drawCircle(const Offset(35, 12), 5, eyePaint);
+    eyePaint.color = const Color(0xFFFF0000);
+    canvas.drawCircle(Offset(35 * scale, -12 * scale), 5 * scale, eyePaint);
+    canvas.drawCircle(Offset(35 * scale, 12 * scale), 5 * scale, eyePaint);
 
     // Mâchoire
     final jawPath = Path()
-      ..moveTo(-10, 0)
-      ..lineTo(60, -10)
-      ..lineTo(78, 0)
-      ..lineTo(60, 10)
+      ..moveTo(-10 * scale, 0)
+      ..lineTo(60 * scale, -10 * scale)
+      ..lineTo(78 * scale, 0)
+      ..lineTo(60 * scale, 10 * scale)
       ..close();
 
-    final jawPaint = Paint()..color = const Color(0xFFD8D8D8);
+    jawPaint.color = const Color(0xFFD8D8D8);
     canvas.drawPath(jawPath, jawPaint);
     canvas.drawPath(jawPath, skullStroke);
 
     // Crocs
-    final fangPaint = Paint()..color = Colors.white;
-    final fangStroke = Paint()
+    fangPaint.color = Colors.white;
+    fangStroke
       ..color = const Color(0xFF444444)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
+      ..strokeWidth = 1 * scale;
 
     for (int i = 0; i < 2; i++) {
-      final x = 55.0 + i * 15;
+      final x = (55.0 + i * 15) * scale;
       final topFang = Path()
-        ..moveTo(x, -8)
-        ..lineTo(x - 3, -18)
-        ..lineTo(x + 3, -18)
+        ..moveTo(x, -8 * scale)
+        ..lineTo(x - 3 * scale, -18 * scale)
+        ..lineTo(x + 3 * scale, -18 * scale)
         ..close();
 
       canvas.drawPath(topFang, fangPaint);
       canvas.drawPath(topFang, fangStroke);
 
       final bottomFang = Path()
-        ..moveTo(x, 8)
-        ..lineTo(x - 3, 18)
-        ..lineTo(x + 3, 18)
+        ..moveTo(x, 8 * scale)
+        ..lineTo(x - 3 * scale, 18 * scale)
+        ..lineTo(x + 3 * scale, 18 * scale)
         ..close();
 
       canvas.drawPath(bottomFang, fangPaint);
@@ -578,20 +589,20 @@ class SnakeSkeleton {
 
     // Petites dents
     for (int i = 0; i < 3; i++) {
-      final x = 48.0 + i * 6;
+      final x = (48.0 + i * 6) * scale;
       final topTooth = Path()
-        ..moveTo(x, -6)
-        ..lineTo(x - 1.5, -11)
-        ..lineTo(x + 1.5, -11)
+        ..moveTo(x, -6 * scale)
+        ..lineTo(x - 1.5 * scale, -11 * scale)
+        ..lineTo(x + 1.5 * scale, -11 * scale)
         ..close();
 
       canvas.drawPath(topTooth, fangPaint);
       canvas.drawPath(topTooth, fangStroke);
 
       final bottomTooth = Path()
-        ..moveTo(x, 6)
-        ..lineTo(x - 1.5, 11)
-        ..lineTo(x + 1.5, 11)
+        ..moveTo(x, 6 * scale)
+        ..lineTo(x - 1.5 * scale, 11 * scale)
+        ..lineTo(x + 1.5 * scale, 11 * scale)
         ..close();
 
       canvas.drawPath(bottomTooth, fangPaint);
@@ -599,14 +610,13 @@ class SnakeSkeleton {
     }
 
     // Fissures
-    final crackPaint = Paint()
+    crackPaint
       ..color = const Color(0xFF555555)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = 1.5 * scale;
 
-    canvas.drawLine(const Offset(10, -18), const Offset(45, -18), crackPaint);
-    canvas.drawLine(const Offset(10, 18), const Offset(45, 18), crackPaint);
-    canvas.drawLine(const Offset(20, 0), const Offset(15, -10), crackPaint);
+    canvas.drawLine(Offset(10 * scale, -18 * scale), Offset(45 * scale, -18 * scale), crackPaint);
+    canvas.drawLine(Offset(10 * scale, 18 * scale), Offset(45 * scale, 18 * scale), crackPaint);
+    canvas.drawLine(Offset(20 * scale, 0), Offset(15 * scale, -10 * scale), crackPaint);
 
     canvas.restore();
   }
@@ -614,30 +624,92 @@ class SnakeSkeleton {
 
 class SkeletonPainter extends CustomPainter {
   final SnakeSkeleton snake;
+  
+  // ⚡ PERFORMANCE: Static reusable paints
+  static final _connectionPaint = Paint()
+    ..color = const Color(0xFF555555)
+    ..strokeWidth = 4
+    ..strokeCap = StrokeCap.round;
+    
+  static final _bodyPaint = Paint()
+    ..style = PaintingStyle.fill;
+    
+  static final _strokePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+    
+  static final _canalPaint = Paint();
+  static final _transversePaint = Paint();
+  static final _legPaint = Paint()
+    ..strokeCap = StrokeCap.round
+    ..style = PaintingStyle.stroke;
+    
+  static final _jointPaint = Paint()
+    ..style = PaintingStyle.fill;
+    
+  static final _clawPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+    
+  static final _segPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+    
+  static final _bonePaint = Paint();
+  static final _arrowPaint = Paint()
+    ..style = PaintingStyle.fill;
+    
+  static final _arrowStroke = Paint()
+    ..style = PaintingStyle.stroke;
+    
+  static final _pointPaint = Paint();
+  static final _hookPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+    
+  static final _detailPaint = Paint();
+  static final _skullPaint = Paint();
+  static final _skullStroke = Paint()
+    ..style = PaintingStyle.stroke;
+    
+  static final _orbitPaint = Paint();
+  static final _eyePaint = Paint();
+  static final _jawPaint = Paint();
+  static final _fangPaint = Paint();
+  static final _fangStroke = Paint()
+    ..style = PaintingStyle.stroke;
+    
+  static final _crackPaint = Paint()
+    ..strokeCap = StrokeCap.round;
 
   SkeletonPainter(this.snake);
 
   @override
   void paint(Canvas canvas, Size size) {
     // Connexions
-    final connectionPaint = Paint()
-      ..color = const Color(0xFF555555)
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-
+    _connectionPaint.strokeWidth = 4 * snake.scale;
     for (int i = 0; i < snake.vertebrae.length - 1; i++) {
       final v1 = snake.vertebrae[i];
       final v2 = snake.vertebrae[i + 1];
-      canvas.drawLine(v1.position, v2.position, connectionPaint);
+      canvas.drawLine(v1.position, v2.position, _connectionPaint);
     }
 
     // Vertèbres
     for (int i = snake.vertebrae.length - 1; i >= 0; i--) {
-      snake.vertebrae[i].draw(canvas, snake.walkPhase);
+      snake.vertebrae[i].draw(
+        canvas, 
+        snake.walkPhase, 
+        _bodyPaint, 
+        _strokePaint, 
+        _canalPaint, 
+        _transversePaint,
+        _legPaint,
+        _jointPaint,
+        _clawPaint
+      );
     }
 
-    snake.drawTail(canvas);
-    snake.drawSkull(canvas);
+    snake.drawTail(canvas, _segPaint, _bonePaint, _arrowPaint, _arrowStroke, 
+                   _pointPaint, _hookPaint, _detailPaint);
+    snake.drawSkull(canvas, _skullPaint, _skullStroke, _orbitPaint, _eyePaint, 
+                    _jawPaint, _fangPaint, _fangStroke, _crackPaint);
   }
 
   @override
