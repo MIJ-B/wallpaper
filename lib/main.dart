@@ -35,8 +35,8 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   double _time = 0;
   late SnakeSkeleton _snake;
   double _scale = 1.0;
-  double _zoom = 1.0; // ← VAOVAO: Zoom level
-  double _globeRotation = 0.0; // ← VAOVAO: Globe rotation
+  double _zoom = 1.0;
+  double _globeRotation = 0.0;
 
   @override
   void initState() {
@@ -51,7 +51,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
         if (!_isDragging) {
           _time += 0.01;
         }
-        _globeRotation += 0.003; // ← VAOVAO: Auto-rotate globe
+        _globeRotation += 0.003;
       });
     });
   }
@@ -142,7 +142,6 @@ class _SkeletonScreenState extends State<SkeletonScreen>
         },
         child: Stack(
           children: [
-            // ✨ VAOVAO: Globe & Skeleton with zoom
             CustomPaint(
               size: size,
               painter: SpaceGlobePainter(_globeRotation, _zoom),
@@ -154,7 +153,6 @@ class _SkeletonScreenState extends State<SkeletonScreen>
                 painter: SkeletonPainter(_snake),
               ),
             ),
-            // ✨ VAOVAO: Zoom controls
             Positioned(
               bottom: 30,
               right: 30,
@@ -198,7 +196,6 @@ class _SkeletonScreenState extends State<SkeletonScreen>
                 ],
               ),
             ),
-            // Info
             Positioned(
               top: 30,
               left: 30,
@@ -225,7 +222,6 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   }
 }
 
-// ✨ VAOVAO: Space Globe Painter
 class SpaceGlobePainter extends CustomPainter {
   final double rotation;
   final double zoom;
@@ -236,30 +232,26 @@ class SpaceGlobePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     
-    // Draw stars
     final starPaint = Paint()..color = Colors.white;
-    final random = math.Random(42); // Fixed seed for consistent stars
+    final random = math.Random(42);
     
     for (int i = 0; i < 200; i++) {
       final x = random.nextDouble() * size.width;
       final y = random.nextDouble() * size.height;
       final starSize = random.nextDouble() * 2 + 0.5;
       
-      // Twinkle effect
       final twinkle = math.sin(rotation * 10 + i) * 0.5 + 0.5;
       starPaint.color = Colors.white.withOpacity(twinkle * 0.8);
       
       canvas.drawCircle(Offset(x, y), starSize, starPaint);
     }
     
-    // Draw globe (wireframe sphere)
     final globeRadius = (size.width * 0.4) * zoom;
     final globePaint = Paint()
       ..color = Colors.white.withOpacity(0.15)
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
     
-    // Latitude lines
     for (int i = 0; i < 8; i++) {
       final lat = (i / 8) * math.pi;
       final y = center.dy + (globeRadius * math.cos(lat));
@@ -270,14 +262,13 @@ class SpaceGlobePainter extends CustomPainter {
           Rect.fromCenter(
             center: Offset(center.dx, y),
             width: currentRadius * 2,
-            height: currentRadius * 2 * 0.3, // Perspective effect
+            height: currentRadius * 2 * 0.3,
           ),
           globePaint,
         );
       }
     }
     
-    // Longitude lines (rotating)
     final longitudePaint = Paint()
       ..color = Colors.white.withOpacity(0.2)
       ..strokeWidth = 1.5
@@ -292,7 +283,6 @@ class SpaceGlobePainter extends CustomPainter {
         final y = center.dy + globeRadius * math.cos(t);
         final z = globeRadius * math.sin(t) * math.sin(angle);
         
-        // Simple perspective
         final scale = 1 + z / (globeRadius * 2);
         final projectedX = center.dx + (x - center.dx) * scale;
         final projectedY = center.dy + (y - center.dy) * scale;
@@ -307,7 +297,6 @@ class SpaceGlobePainter extends CustomPainter {
       canvas.drawPath(path, longitudePaint);
     }
     
-    // Outer glow
     final glowPaint = Paint()
       ..color = Colors.blue.withOpacity(0.1)
       ..strokeWidth = 8
@@ -315,7 +304,6 @@ class SpaceGlobePainter extends CustomPainter {
     
     canvas.drawCircle(center, globeRadius, glowPaint);
     
-    // Particles orbiting
     final particlePaint = Paint()..style = PaintingStyle.fill;
     
     for (int i = 0; i < 30; i++) {
@@ -814,4 +802,15 @@ class SkeletonPainter extends CustomPainter {
   static final _jointPaint = Paint()
     ..style = PaintingStyle.fill;
     
-  static final _claw
+  static final _clawPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+    
+  static final _segPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+    
+  static final _bonePaint = Paint();
+  static final _arrowPaint = Paint()
+    ..style = PaintingStyle.fill;
+    
+  static final _arrowStroke = Paint()
+    ..style = PaintingStyle.stroke;
