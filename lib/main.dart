@@ -12,7 +12,7 @@ class SkeletonApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Skeleton Bibilava 3D',
+      title: 'Skeleton Bibilava',
       theme: ThemeData.dark(),
       home: const SkeletonScreen(),
     );
@@ -32,10 +32,8 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   Offset _dragPosition = Offset.zero;
   Offset _lastDragPosition = Offset.zero;
   bool _isDragging = false;
+  double _time = 0;
   late SnakeSkeleton _snake;
-  double _globeRotationX = 0.3;
-  double _globeRotationY = 0;
-  Offset _lastPanPosition = Offset.zero;
 
   @override
   void initState() {
@@ -48,7 +46,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
     _controller.addListener(() {
       setState(() {
         if (!_isDragging) {
-          _globeRotationY += 0.005; // Auto-rotate globe only
+          _time += 0.01;
         }
       });
     });
@@ -69,54 +67,68 @@ class _SkeletonScreenState extends State<SkeletonScreen>
     super.dispose();
   }
 
+  Offset _getAutoPosition(Size size) {
+    final pattern = (_time / 10).floor() % 4;
+
+    switch (pattern) {
+      case 0:
+        return Offset(
+          _lastDragPosition.dx + math.sin(_time) * 200,
+          _lastDragPosition.dy + math.sin(_time * 2) * 150,
+        );
+      case 1:
+        return Offset(
+          _lastDragPosition.dx + math.sin(_time * 1.5) * 250,
+          _lastDragPosition.dy + math.cos(_time * 0.8) * 100,
+        );
+      case 2:
+        final radius = 100 + math.sin(_time * 0.5) * 80;
+        return Offset(
+          _lastDragPosition.dx + math.cos(_time * 2) * radius,
+          _lastDragPosition.dy + math.sin(_time * 2) * radius,
+        );
+      case 3:
+        return Offset(
+          _lastDragPosition.dx + math.sin(_time * 2) * 200,
+          _lastDragPosition.dy + math.sin(_time * 3) * 120,
+        );
+      default:
+        return _lastDragPosition;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final targetPosition = _isDragging ? _dragPosition : _getAutoPosition(size);
 
-    _snake.update(_dragPosition);
+    _snake.update(targetPosition);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0a0a1a),
+      backgroundColor: Colors.black,
       body: GestureDetector(
         onPanStart: (details) {
           setState(() {
             _isDragging = true;
             _dragPosition = details.localPosition;
             _lastDragPosition = _dragPosition;
-            _lastPanPosition = details.localPosition;
           });
         },
         onPanUpdate: (details) {
           setState(() {
-            if (details.localPosition.dx < size.width * 0.3 ||
-                details.localPosition.dx > size.width * 0.7 ||
-                details.localPosition.dy < size.height * 0.3 ||
-                details.localPosition.dy > size.height * 0.7) {
-              // Rotate globe when near edges
-              final delta = details.localPosition - _lastPanPosition;
-              _globeRotationY += delta.dx * 0.01;
-              _globeRotationX -= delta.dy * 0.01;
-              _globeRotationX = _globeRotationX.clamp(-math.pi / 2, math.pi / 2);
-            } else {
-              // Move skeleton when in center
-              _dragPosition = details.localPosition;
-              _lastDragPosition = _dragPosition;
-            }
-            _lastPanPosition = details.localPosition;
+            _dragPosition = details.localPosition;
+            _lastDragPosition = _dragPosition;
           });
         },
         onPanEnd: (details) {
           setState(() {
             _isDragging = false;
+            _time = 0;
           });
         },
         child: CustomPaint(
           size: size,
-          painter: SkeletonPainter(
-            _snake,
-            _globeRotationX,
-            _globeRotationY,
-          ),
+          painter: SkeletonPainter(_snake),
         ),
       ),
     );
@@ -181,6 +193,7 @@ class Leg {
       canvas.drawCircle(seg.start, jointSize, jointPaint);
     }
 
+    // Griffes
     if (segments.isNotEmpty) {
       final lastSeg = segments.last;
       final clawPaint = Paint()
@@ -257,6 +270,7 @@ class Vertebra {
     final progress = index / total;
     final currentSize = size * (1 - progress * 0.3);
 
+    // Dessiner les pattes
     for (var leg in legs) {
       leg.update(position, angle, walkPhase);
       leg.draw(canvas, progress);
@@ -266,6 +280,7 @@ class Vertebra {
     canvas.translate(position.dx, position.dy);
     canvas.rotate(angle);
 
+    // Corps de la vertèbre
     final bodyPaint = Paint()
       ..color = const Color(0xFFD8D8D8)
       ..style = PaintingStyle.fill;
@@ -293,6 +308,7 @@ class Vertebra {
       strokePaint,
     );
 
+    // Canal vertébral
     final canalPaint = Paint()..color = Colors.black;
     canvas.drawOval(
       Rect.fromCenter(
@@ -303,6 +319,7 @@ class Vertebra {
       canalPaint,
     );
 
+    // Processus transverses
     final transverseLength = currentSize * 2;
     final transverseWidth = currentSize * 0.6;
     final transversePaint = Paint()..color = const Color(0xFFC8C8C8);
@@ -410,6 +427,7 @@ class SnakeSkeleton {
       y = nextY;
     }
 
+    // Arrow pointu
     canvas.save();
     canvas.translate(x, y);
     canvas.rotate(angle);
@@ -434,6 +452,7 @@ class SnakeSkeleton {
 
     canvas.drawPath(arrowPath, arrowStroke);
 
+    // Pointe
     final pointPaint = Paint()..color = Colors.white;
     final pointPath = Path()
       ..moveTo(25, -5)
@@ -444,6 +463,7 @@ class SnakeSkeleton {
     canvas.drawPath(pointPath, pointPaint);
     canvas.drawPath(pointPath, arrowStroke);
 
+    // Crochets
     final hookPaint = Paint()
       ..color = const Color(0xFF888888)
       ..strokeWidth = 2
@@ -452,6 +472,7 @@ class SnakeSkeleton {
     canvas.drawLine(const Offset(20, -6), const Offset(18, -12), hookPaint);
     canvas.drawLine(const Offset(20, 6), const Offset(18, 12), hookPaint);
 
+    // Détails
     final detailPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 1;
@@ -472,6 +493,7 @@ class SnakeSkeleton {
     canvas.translate(head.position.dx, head.position.dy);
     canvas.rotate(head.angle);
 
+    // Crâne principal
     final skullPaint = Paint()..color = const Color(0xFFE8E8E8);
     canvas.drawOval(
       Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
@@ -488,6 +510,7 @@ class SnakeSkeleton {
       skullStroke,
     );
 
+    // Museau
     final snoutPath = Path()
       ..moveTo(60, 0)
       ..lineTo(80, -3)
@@ -497,6 +520,7 @@ class SnakeSkeleton {
     canvas.drawPath(snoutPath, skullPaint);
     canvas.drawPath(snoutPath, skullStroke);
 
+    // Orbites
     final orbitPaint = Paint()..color = Colors.black;
     canvas.drawOval(
       Rect.fromCenter(center: const Offset(35, -12), width: 20, height: 24),
@@ -507,10 +531,12 @@ class SnakeSkeleton {
       orbitPaint,
     );
 
+    // Yeux rouges
     final eyePaint = Paint()..color = const Color(0xFFFF0000);
     canvas.drawCircle(const Offset(35, -12), 5, eyePaint);
     canvas.drawCircle(const Offset(35, 12), 5, eyePaint);
 
+    // Mâchoire
     final jawPath = Path()
       ..moveTo(-10, 0)
       ..lineTo(60, -10)
@@ -522,6 +548,7 @@ class SnakeSkeleton {
     canvas.drawPath(jawPath, jawPaint);
     canvas.drawPath(jawPath, skullStroke);
 
+    // Crocs
     final fangPaint = Paint()..color = Colors.white;
     final fangStroke = Paint()
       ..color = const Color(0xFF444444)
@@ -549,6 +576,7 @@ class SnakeSkeleton {
       canvas.drawPath(bottomFang, fangStroke);
     }
 
+    // Petites dents
     for (int i = 0; i < 3; i++) {
       final x = 48.0 + i * 6;
       final topTooth = Path()
@@ -570,6 +598,7 @@ class SnakeSkeleton {
       canvas.drawPath(bottomTooth, fangStroke);
     }
 
+    // Fissures
     final crackPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 1.5
@@ -583,231 +612,14 @@ class SnakeSkeleton {
   }
 }
 
-class Globe3D {
-  final double radius;
-  final int latLines = 18;
-  final int lonLines = 36;
-
-  Globe3D(this.radius);
-
-  void draw(Canvas canvas, Size size, double rotX, double rotY) {
-    final center = Offset(size.width / 2, size.height / 2);
-
-    // Draw filled sphere with gradient
-    final spherePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          const Color(0xFF1a4d2e),
-          const Color(0xFF0d2818),
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-
-    canvas.drawCircle(center, radius, spherePaint);
-
-    // Draw grid lines
-    final gridPaint = Paint()
-      ..color = const Color(0xFF2a5a3e).withOpacity(0.6)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-
-    // Latitude lines
-    for (int i = 0; i < latLines; i++) {
-      final lat = (i / latLines) * math.pi - math.pi / 2;
-      final y = math.sin(lat) * radius;
-      final r = math.cos(lat) * radius;
-
-      final path = Path();
-      bool firstPoint = true;
-
-      for (int j = 0; j <= lonLines; j++) {
-        final lon = (j / lonLines) * 2 * math.pi;
-        final point = _project3D(r * math.cos(lon), y, r * math.sin(lon), rotX, rotY);
-
-        if (point != null) {
-          final screenPos = Offset(
-            center.dx + point.dx,
-            center.dy + point.dy,
-          );
-
-          if (firstPoint) {
-            path.moveTo(screenPos.dx, screenPos.dy);
-            firstPoint = false;
-          } else {
-            path.lineTo(screenPos.dx, screenPos.dy);
-          }
-        }
-      }
-
-      canvas.drawPath(path, gridPaint);
-    }
-
-    // Longitude lines
-    for (int i = 0; i < lonLines; i++) {
-      final lon = (i / lonLines) * 2 * math.pi;
-
-      final path = Path();
-      bool firstPoint = true;
-
-      for (int j = 0; j <= latLines; j++) {
-        final lat = (j / latLines) * math.pi - math.pi / 2;
-        final y = math.sin(lat) * radius;
-        final r = math.cos(lat) * radius;
-
-        final point = _project3D(r * math.cos(lon), y, r * math.sin(lon), rotX, rotY);
-
-        if (point != null) {
-          final screenPos = Offset(
-            center.dx + point.dx,
-            center.dy + point.dy,
-          );
-
-          if (firstPoint) {
-            path.moveTo(screenPos.dx, screenPos.dy);
-            firstPoint = false;
-          } else {
-            path.lineTo(screenPos.dx, screenPos.dy);
-          }
-        }
-      }
-
-      canvas.drawPath(path, gridPaint);
-    }
-
-    // Draw continents (simplified)
-    _drawContinents(canvas, center, rotX, rotY);
-
-    // Atmosphere glow
-    final glowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          const Color(0xFF4a9d6f).withOpacity(0.0),
-          const Color(0xFF4a9d6f).withOpacity(0.3),
-        ],
-        stops: const [0.85, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius + 20));
-
-    canvas.drawCircle(center, radius + 20, glowPaint);
-  }
-
-  Offset? _project3D(double x, double y, double z, double rotX, double rotY) {
-    // Rotate around Y axis
-    final x1 = x * math.cos(rotY) - z * math.sin(rotY);
-    final z1 = x * math.sin(rotY) + z * math.cos(rotY);
-
-    // Rotate around X axis
-    final y2 = y * math.cos(rotX) - z1 * math.sin(rotX);
-    final z2 = y * math.sin(rotX) + z1 * math.cos(rotX);
-
-    // Check if point is visible (front of sphere)
-    if (z2 < -radius * 0.1) return null;
-
-    return Offset(x1, y2);
-  }
-
-  void _drawContinents(Canvas canvas, Offset center, double rotX, double rotY) {
-    final continentPaint = Paint()
-      ..color = const Color(0xFF3a7a54)
-      ..style = PaintingStyle.fill;
-
-    // Simplified continent shapes (Africa, Americas, Eurasia)
-    final continents = [
-      // Africa
-      [
-        [0.0, 0.3],
-        [0.1, 0.2],
-        [0.15, 0.0],
-        [0.1, -0.3],
-        [-0.1, -0.2],
-      ],
-      // South America
-      [
-        [-0.6, 0.2],
-        [-0.5, 0.4],
-        [-0.55, 0.0],
-        [-0.6, -0.2],
-      ],
-      // North America
-      [
-        [-0.8, 0.5],
-        [-0.7, 0.7],
-        [-0.9, 0.8],
-        [-1.0, 0.6],
-      ],
-    ];
-
-    for (var continent in continents) {
-      final path = Path();
-      bool firstPoint = true;
-
-      for (var coord in continent) {
-        final lon = coord[0] * math.pi;
-        final lat = coord[1] * math.pi / 2;
-
-        final y = math.sin(lat) * radius;
-        final r = math.cos(lat) * radius;
-        final x = r * math.cos(lon);
-        final z = r * math.sin(lon);
-
-        final point = _project3D(x, y, z, rotX, rotY);
-
-        if (point != null) {
-          final screenPos = Offset(
-            center.dx + point.dx,
-            center.dy + point.dy,
-          );
-
-          if (firstPoint) {
-            path.moveTo(screenPos.dx, screenPos.dy);
-            firstPoint = false;
-          } else {
-            path.lineTo(screenPos.dx, screenPos.dy);
-          }
-        }
-      }
-
-      path.close();
-      canvas.drawPath(path, continentPaint);
-    }
-  }
-}
-
 class SkeletonPainter extends CustomPainter {
   final SnakeSkeleton snake;
-  final double globeRotationX;
-  final double globeRotationY;
-  late Globe3D globe;
 
-  SkeletonPainter(this.snake, this.globeRotationX, this.globeRotationY) {
-    globe = Globe3D(200);
-  }
+  SkeletonPainter(this.snake);
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw space background
-    final spacePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          const Color(0xFF1a1a3a),
-          const Color(0xFF0a0a1a),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), spacePaint);
-
-    // Draw stars
-    final starPaint = Paint()..color = Colors.white;
-    final random = math.Random(42);
-    for (int i = 0; i < 200; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final starSize = random.nextDouble() * 2;
-      canvas.drawCircle(Offset(x, y), starSize, starPaint);
-    }
-
-    // Draw 3D globe
-    globe.draw(canvas, size, globeRotationX, globeRotationY);
-
-    // Draw skeleton on top
+    // Connexions
     final connectionPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 4
@@ -819,6 +631,7 @@ class SkeletonPainter extends CustomPainter {
       canvas.drawLine(v1.position, v2.position, connectionPaint);
     }
 
+    // Vertèbres
     for (int i = snake.vertebrae.length - 1; i >= 0; i--) {
       snake.vertebrae[i].draw(canvas, snake.walkPhase);
     }
