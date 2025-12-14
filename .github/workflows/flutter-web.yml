@@ -1,105 +1,62 @@
-name: Flutter Web Deploy
+name: Web Test & Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-env:
-  REPO_NAME: wallpaper
-  USERNAME: MIJ-B
+    branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
-    
+
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Setup Flutter
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: 🐦 Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.24.0'
         channel: 'stable'
-    
-    - name: Create web directory and files
-      run: |
-        mkdir -p web
-        cat > web/index.html << 'EOF'
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <base href="$FLUTTER_BASE_HREF">
-          <meta charset="UTF-8">
-          <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-          <meta name="description" content="Skeleton Bibilava - Interactive Animation">
-          <meta name="apple-mobile-web-app-capable" content="yes">
-          <meta name="apple-mobile-web-app-status-bar-style" content="black">
-          <meta name="apple-mobile-web-app-title" content="Skeleton">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <title>Skeleton Bibilava</title>
-          <link rel="manifest" href="manifest.json">
-          <style>
-            body {
-              margin: 0;
-              padding: 0;
-              background: #000;
-              overflow: hidden;
-              touch-action: none;
-            }
-          </style>
-        </head>
-        <body>
-          <script>
-            var serviceWorkerVersion = null;
-          </script>
-          <script src="flutter_bootstrap.js" async></script>
-        </body>
-        </html>
-        EOF
-        
-        cat > web/manifest.json << 'EOF'
-        {
-          "name": "Skeleton Bibilava",
-          "short_name": "Skeleton",
-          "start_url": ".",
-          "display": "fullscreen",
-          "background_color": "#000000",
-          "theme_color": "#000000",
-          "description": "Interactive skeleton animation",
-          "orientation": "any",
-          "prefer_related_applications": false,
-          "icons": []
-        }
-        EOF
-    
-    - name: Get dependencies
+
+    - name: 🚫 Disable analytics
+      run: flutter config --no-analytics
+
+    - name: 🌐 Enable Flutter Web
+      run: flutter config --enable-web
+
+    - name: 🎯 Create web platform files
+      run: flutter create . --platforms=web
+
+    - name: 📦 Get dependencies
       run: flutter pub get
-    
-    - name: Run tests
-      run: flutter test
+
+    - name: 🔍 Analyze code
+      run: flutter analyze --no-fatal-infos
       continue-on-error: true
-    
-    - name: Build web
-      run: flutter build web --release --base-href /${{ env.REPO_NAME }}/
-    
-    - name: Add custom 404 page
-      run: |
-        cp build/web/index.html build/web/404.html
-    
-    - name: Create .nojekyll file
-      run: |
-        touch build/web/.nojekyll
-    
-    - name: Deploy to GitHub Pages
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    - name: 🏗️ Build web (release)
+      run: flutter build web --release --web-renderer html --base-href /assistant/
+
+    - name: 📝 Add .nojekyll file
+      run: touch build/web/.nojekyll
+
+    - name: 🚀 Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3
+      if: github.ref == 'refs/heads/main'
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./build/web
-        user_name: 'github-actions[bot]'
-        user_email: 'github-actions[bot]@users.noreply.github.com'
-        commit_message: '🦴 Deploy Skeleton Bibilava'
+        force_orphan: true
