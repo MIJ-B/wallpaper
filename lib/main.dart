@@ -34,9 +34,6 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   bool _isDragging = false;
   double _time = 0;
   late SnakeSkeleton _snake;
-  double _scale = 1.0;
-  double _zoom = 1.0;
-  double _globeRotation = 0.0;
 
   @override
   void initState() {
@@ -51,7 +48,6 @@ class _SkeletonScreenState extends State<SkeletonScreen>
         if (!_isDragging) {
           _time += 0.01;
         }
-        _globeRotation += 0.003;
       });
     });
   }
@@ -60,16 +56,9 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final size = MediaQuery.of(context).size;
-    
-    final screenWidth = size.width;
-    final screenHeight = size.height;
-    final minDimension = math.min(screenWidth, screenHeight);
-    
-    _scale = (minDimension / 800).clamp(0.5, 1.5);
-    
     _dragPosition = Offset(size.width / 2, size.height / 2);
     _lastDragPosition = _dragPosition;
-    _snake = SnakeSkeleton(25, _dragPosition, scale: _scale);
+    _snake = SnakeSkeleton(25, _dragPosition);
   }
 
   @override
@@ -80,31 +69,28 @@ class _SkeletonScreenState extends State<SkeletonScreen>
 
   Offset _getAutoPosition(Size size) {
     final pattern = (_time / 10).floor() % 4;
-    
-    final range = 200 * _scale;
-    final smallRange = 150 * _scale;
 
     switch (pattern) {
       case 0:
         return Offset(
-          _lastDragPosition.dx + math.sin(_time) * range,
-          _lastDragPosition.dy + math.sin(_time * 2) * smallRange,
+          _lastDragPosition.dx + math.sin(_time) * 200,
+          _lastDragPosition.dy + math.sin(_time * 2) * 150,
         );
       case 1:
         return Offset(
-          _lastDragPosition.dx + math.sin(_time * 1.5) * (range * 1.25),
-          _lastDragPosition.dy + math.cos(_time * 0.8) * (range * 0.5),
+          _lastDragPosition.dx + math.sin(_time * 1.5) * 250,
+          _lastDragPosition.dy + math.cos(_time * 0.8) * 100,
         );
       case 2:
-        final radius = (100 + math.sin(_time * 0.5) * 80) * _scale;
+        final radius = 100 + math.sin(_time * 0.5) * 80;
         return Offset(
           _lastDragPosition.dx + math.cos(_time * 2) * radius,
           _lastDragPosition.dy + math.sin(_time * 2) * radius,
         );
       case 3:
         return Offset(
-          _lastDragPosition.dx + math.sin(_time * 2) * range,
-          _lastDragPosition.dy + math.sin(_time * 3) * (range * 0.6),
+          _lastDragPosition.dx + math.sin(_time * 2) * 200,
+          _lastDragPosition.dy + math.sin(_time * 3) * 120,
         );
       default:
         return _lastDragPosition;
@@ -140,387 +126,520 @@ class _SkeletonScreenState extends State<SkeletonScreen>
             _time = 0;
           });
         },
-        child: Stack(
-          children: [
-            CustomPaint(
-              size: size,
-              painter: SpaceGlobePainter(_globeRotation, _zoom),
-            ),
-            Transform.scale(
-              scale: _zoom,
-              child: CustomPaint(
-                size: size,
-                painter: SkeletonPainter(_snake),
-              ),
-            ),
-            Positioned(
-              bottom: 30,
-              right: 30,
-              child: Column(
-                children: [
-                  FloatingActionButton(
-                    mini: true,
-                    heroTag: 'zoom_in',
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                    onPressed: () {
-                      setState(() {
-                        _zoom = (_zoom + 0.1).clamp(0.5, 2.0);
-                      });
-                    },
-                    child: const Icon(Icons.add, color: Colors.white),
-                  ),
-                  const SizedBox(height: 10),
-                  FloatingActionButton(
-                    mini: true,
-                    heroTag: 'zoom_out',
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                    onPressed: () {
-                      setState(() {
-                        _zoom = (_zoom - 0.1).clamp(0.5, 2.0);
-                      });
-                    },
-                    child: const Icon(Icons.remove, color: Colors.white),
-                  ),
-                  const SizedBox(height: 10),
-                  FloatingActionButton(
-                    mini: true,
-                    heroTag: 'reset',
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                    onPressed: () {
-                      setState(() {
-                        _zoom = 1.0;
-                      });
-                    },
-                    child: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              top: 30,
-              left: 30,
-              child: Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  '🦴 Skeleton in Space\nDrag to move\nZoom +/- buttons',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-              ),
-            ),
-          ],
+        child: CustomPaint(
+          size: size,
+          painter: SkeletonPainter(_snake),
         ),
       ),
     );
   }
 }
 
-class SpaceGlobePainter extends CustomPainter {
-  final double rotation;
-  final double zoom;
+class Leg {
+  final String side;
+  final int vertebraIndex;
+  final int totalVertebrae;
+  final int numSegments = 3;
+  late double baseLength;
+  late double segmentLength;
+  List<LegSegment> segments = [];
 
-  SpaceGlobePainter(this.rotation, this.zoom);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    
-    // Draw stars background
-    _drawStars(canvas, size);
-    
-    // Draw 3D globe (similar to Three.js)
-    _draw3DGlobe(canvas, center, size);
-    
-    // Draw orbiting particles
-    _drawOrbitingParticles(canvas, center, size);
+  Leg(this.side, this.vertebraIndex, this.totalVertebrae) {
+    final progress = vertebraIndex / totalVertebrae;
+    baseLength = 25 - (progress * 18);
+    segmentLength = baseLength / numSegments;
   }
 
-  void _drawStars(Canvas canvas, Size size) {
-    final starPaint = Paint()..color = Colors.white;
-    final random = math.Random(42);
-    
-    for (int i = 0; i < 300; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final starSize = random.nextDouble() * 2.5 + 0.3;
-      
-      // Twinkling effect
-      final twinkle = math.sin(rotation * 8 + i * 0.5) * 0.5 + 0.5;
-      final brightness = random.nextDouble() * 0.5 + 0.5;
-      starPaint.color = Colors.white.withOpacity(twinkle * brightness);
-      
-      canvas.drawCircle(Offset(x, y), starSize, starPaint);
-      
-      // Some stars with glow
-      if (random.nextDouble() > 0.9) {
-        final glowPaint = Paint()
-          ..color = Colors.white.withOpacity(twinkle * 0.3)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-        canvas.drawCircle(Offset(x, y), starSize * 2, glowPaint);
-      }
+  void update(Offset base, double angle, double walkPhase) {
+    final legAngle = angle + (side == 'left' ? math.pi / 2 : -math.pi / 2);
+    final walkOffset = vertebraIndex * 0.5;
+    final walk = math.sin(walkPhase + walkOffset + (side == 'left' ? 0 : math.pi)) * 0.4;
+
+    segments.clear();
+    double x = base.dx;
+    double y = base.dy;
+
+    for (int i = 0; i < numSegments; i++) {
+      final segAngle = legAngle + walk + (i * 0.3);
+      final nextX = x + math.cos(segAngle) * segmentLength;
+      final nextY = y + math.sin(segAngle) * segmentLength;
+
+      segments.add(LegSegment(
+        start: Offset(x, y),
+        end: Offset(nextX, nextY),
+      ));
+
+      x = nextX;
+      y = nextY;
     }
   }
 
-  void _draw3DGlobe(Canvas canvas, Offset center, Size size) {
-    final globeRadius = (math.min(size.width, size.height) * 0.35) * zoom;
-    
-    // 1. Draw sphere shadow/depth
-    final shadowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.transparent,
-          Colors.black.withOpacity(0.5),
-        ],
-        stops: const [0.6, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: globeRadius));
-    
-    canvas.drawCircle(center, globeRadius, shadowPaint);
-    
-    // 2. Draw main sphere with gradient (like Three.js MeshPhongMaterial)
-    final sphereGradient = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(-0.3, -0.3),
-        colors: [
-          const Color(0xFF1a3a5c).withOpacity(0.3),
-          const Color(0xFF0d1f35).withOpacity(0.2),
-          Colors.black.withOpacity(0.1),
-        ],
-        stops: const [0.0, 0.6, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: globeRadius));
-    
-    canvas.drawCircle(center, globeRadius, sphereGradient);
-    
-    // 3. Draw latitude lines (parallels)
-    final latitudePaint = Paint()
-      ..color = const Color(0xFF4a90e2).withOpacity(0.4)
-      ..strokeWidth = 1.5
+  void draw(Canvas canvas, double progress) {
+    final thickness = 3.0 - (progress * 1.5);
+    final paint = Paint()
+      ..color = const Color(0xFFB0B0B0)
+      ..strokeWidth = thickness
+      ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-    
-    for (int i = 1; i < 9; i++) {
-      final lat = (i / 9) * math.pi - math.pi / 2;
-      final y = center.dy - (globeRadius * math.sin(lat));
-      final ringRadius = globeRadius * math.cos(lat);
-      
-      if (ringRadius > 0) {
-        // 3D perspective effect
-        final perspectiveScale = 0.25; // Flattening effect
-        canvas.drawOval(
-          Rect.fromCenter(
-            center: Offset(center.dx, y),
-            width: ringRadius * 2,
-            height: ringRadius * 2 * perspectiveScale,
-          ),
-          latitudePaint,
+
+    for (var seg in segments) {
+      canvas.drawLine(seg.start, seg.end, paint);
+
+      final jointSize = 4.0 - (progress * 2);
+      final jointPaint = Paint()
+        ..color = const Color(0xFFD0D0D0)
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(seg.start, jointSize, jointPaint);
+    }
+
+    // Griffes
+    if (segments.isNotEmpty) {
+      final lastSeg = segments.last;
+      final clawPaint = Paint()
+        ..color = const Color(0xFF888888)
+        ..strokeWidth = 1
+        ..strokeCap = StrokeCap.round;
+
+      final numClaws = progress < 0.5 ? 3 : 2;
+      for (int i = 0; i < numClaws; i++) {
+        final angle = math.atan2(
+          lastSeg.end.dy - lastSeg.start.dy,
+          lastSeg.end.dx - lastSeg.start.dx,
+        );
+        final clawAngle = angle + (i - 1) * 0.3;
+        final clawLength = 8.0 - (progress * 4);
+        final clawEnd = Offset(
+          lastSeg.end.dx + math.cos(clawAngle) * clawLength,
+          lastSeg.end.dy + math.sin(clawAngle) * clawLength,
+        );
+
+        canvas.drawLine(lastSeg.end, clawEnd, clawPaint);
+      }
+    }
+  }
+}
+
+class LegSegment {
+  final Offset start;
+  final Offset end;
+
+  LegSegment({required this.start, required this.end});
+}
+
+class Vertebra {
+  Offset position;
+  double size;
+  double angle;
+  final int index;
+  final int total;
+  final List<Leg> legs = [];
+
+  Vertebra({
+    required this.position,
+    required this.size,
+    required this.angle,
+    required this.index,
+    required this.total,
+  }) {
+    if (index >= 2 && index < total - 3) {
+      legs.add(Leg('left', index, total));
+      legs.add(Leg('right', index, total));
+    }
+  }
+
+  void follow(Offset target) {
+    final dx = target.dx - position.dx;
+    final dy = target.dy - position.dy;
+    final distance = math.sqrt(dx * dx + dy * dy);
+
+    if (distance > 0) {
+      angle = math.atan2(dy, dx);
+
+      final spacing = size * 0.8;
+      if (distance > spacing) {
+        position = Offset(
+          target.dx - math.cos(angle) * spacing,
+          target.dy - math.sin(angle) * spacing,
         );
       }
     }
-    
-    // 4. Draw longitude lines (meridians) with rotation
-    final longitudePaint = Paint()
-      ..color = const Color(0xFF4a90e2).withOpacity(0.5)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    
-    for (int i = 0; i < 16; i++) {
-      final lonAngle = (i / 16) * math.pi * 2 + rotation;
-      final path = Path();
-      
-      bool started = false;
-      for (double t = -math.pi / 2; t <= math.pi / 2; t += 0.05) {
-        // 3D sphere coordinates
-        final x = globeRadius * math.cos(t) * math.sin(lonAngle);
-        final y = globeRadius * math.sin(t);
-        final z = globeRadius * math.cos(t) * math.cos(lonAngle);
-        
-        // Only draw front-facing parts (z >= 0)
-        if (z >= 0) {
-          final projectedX = center.dx + x;
-          final projectedY = center.dy - y;
-          
-          // Fade based on depth (z-axis)
-          final depth = z / globeRadius;
-          
-          if (!started) {
-            path.moveTo(projectedX, projectedY);
-            started = true;
-          } else {
-            path.lineTo(projectedX, projectedY);
-          }
-        } else {
-          started = false;
-        }
-      }
-      
-      canvas.drawPath(path, longitudePaint);
+  }
+
+  void draw(Canvas canvas, double walkPhase) {
+    final progress = index / total;
+    final currentSize = size * (1 - progress * 0.3);
+
+    // Dessiner les pattes
+    for (var leg in legs) {
+      leg.update(position, angle, walkPhase);
+      leg.draw(canvas, progress);
     }
-    
-    // 5. Draw equator (highlighted)
-    final equatorPaint = Paint()
-      ..color = const Color(0xFF64b5f6).withOpacity(0.6)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    
+
+    canvas.save();
+    canvas.translate(position.dx, position.dy);
+    canvas.rotate(angle);
+
+    // Corps de la vertèbre
+    final bodyPaint = Paint()
+      ..color = const Color(0xFFD8D8D8)
+      ..style = PaintingStyle.fill;
+
     canvas.drawOval(
       Rect.fromCenter(
-        center: center,
-        width: globeRadius * 2,
-        height: globeRadius * 2 * 0.25,
+        center: Offset.zero,
+        width: currentSize * 3,
+        height: currentSize * 2,
       ),
-      equatorPaint,
+      bodyPaint,
     );
-    
-    // 6. Draw continental outlines (simplified)
-    _drawContinents(canvas, center, globeRadius);
-    
-    // 7. Outer glow/atmosphere
-    final atmospherePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.transparent,
-          const Color(0xFF2196f3).withOpacity(0.3),
-          const Color(0xFF64b5f6).withOpacity(0.1),
-        ],
-        stops: const [0.92, 0.96, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: globeRadius * 1.08));
-    
-    canvas.drawCircle(center, globeRadius * 1.08, atmospherePaint);
-    
-    // 8. Highlight/specular light (Three.js style)
-    final highlightPaint = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(-0.4, -0.4),
-        colors: [
-          Colors.white.withOpacity(0.3),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.4],
-      ).createShader(Rect.fromCircle(center: center, radius: globeRadius * 0.3));
-    
-    canvas.drawCircle(
-      Offset(center.dx - globeRadius * 0.3, center.dy - globeRadius * 0.3),
-      globeRadius * 0.3,
-      highlightPaint,
-    );
-  }
 
-  void _drawContinents(Canvas canvas, Offset center, double radius) {
-    final continentPaint = Paint()
-      ..color = const Color(0xFF81c784).withOpacity(0.3)
-      ..style = PaintingStyle.fill;
-    
-    final continentStroke = Paint()
-      ..color = const Color(0xFF66bb6a).withOpacity(0.5)
-      ..strokeWidth = 1.5
+    final strokePaint = Paint()
+      ..color = const Color(0xFF666666)
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
-    
-    // Simplified continent shapes (Africa-like, Americas-like)
-    // Africa region
-    final africaPath = Path();
-    for (double t = 0; t < math.pi * 2; t += 0.2) {
-      final angle = t + rotation * 0.5;
-      final lat = math.sin(t * 2) * 0.4;
-      
-      final x = radius * 0.9 * math.cos(lat) * math.sin(angle);
-      final y = radius * 0.9 * math.sin(lat);
-      final z = radius * 0.9 * math.cos(lat) * math.cos(angle);
-      
-      if (z >= 0 && angle > math.pi * 0.3 && angle < math.pi * 0.7) {
-        final projX = center.dx + x;
-        final projY = center.dy - y;
-        
-        if (t == 0 || africaPath.getBounds().isEmpty) {
-          africaPath.moveTo(projX, projY);
-        } else {
-          africaPath.lineTo(projX, projY);
-        }
-      }
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: currentSize * 3,
+        height: currentSize * 2,
+      ),
+      strokePaint,
+    );
+
+    // Canal vertébral
+    final canalPaint = Paint()..color = Colors.black;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: currentSize,
+        height: currentSize * 0.6,
+      ),
+      canalPaint,
+    );
+
+    // Processus transverses
+    final transverseLength = currentSize * 2;
+    final transverseWidth = currentSize * 0.6;
+    final transversePaint = Paint()..color = const Color(0xFFC8C8C8);
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(-transverseLength, 0),
+        width: transverseWidth * 2,
+        height: transverseWidth * 1.2,
+      ),
+      transversePaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(-transverseLength, 0),
+        width: transverseWidth * 2,
+        height: transverseWidth * 1.2,
+      ),
+      strokePaint,
+    );
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(transverseLength, 0),
+        width: transverseWidth * 2,
+        height: transverseWidth * 1.2,
+      ),
+      transversePaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(transverseLength, 0),
+        width: transverseWidth * 2,
+        height: transverseWidth * 1.2,
+      ),
+      strokePaint,
+    );
+
+    canvas.restore();
+  }
+}
+
+class SnakeSkeleton {
+  final List<Vertebra> vertebrae = [];
+  final int numVertebrae;
+  final double baseSize = 20;
+  double walkPhase = 0;
+
+  SnakeSkeleton(this.numVertebrae, Offset initialPosition) {
+    for (int i = 0; i < numVertebrae; i++) {
+      final size = baseSize * (1 - (i / numVertebrae) * 0.5);
+      vertebrae.add(Vertebra(
+        position: Offset(
+          initialPosition.dx - i * size * 0.8,
+          initialPosition.dy,
+        ),
+        size: size,
+        angle: 0,
+        index: i,
+        total: numVertebrae,
+      ));
     }
-    
-    canvas.drawPath(africaPath, continentPaint);
-    canvas.drawPath(africaPath, continentStroke);
-    
-    // Americas region
-    final americasPath = Path();
-    for (double t = 0; t < math.pi * 2; t += 0.2) {
-      final angle = t + rotation * 0.5 + math.pi;
-      final lat = math.sin(t * 1.5) * 0.5;
-      
-      final x = radius * 0.85 * math.cos(lat) * math.sin(angle);
-      final y = radius * 0.85 * math.sin(lat);
-      final z = radius * 0.85 * math.cos(lat) * math.cos(angle);
-      
-      if (z >= 0 && angle > math.pi * 1.3 && angle < math.pi * 1.7) {
-        final projX = center.dx + x;
-        final projY = center.dy - y;
-        
-        if (t == 0 || americasPath.getBounds().isEmpty) {
-          americasPath.moveTo(projX, projY);
-        } else {
-          americasPath.lineTo(projX, projY);
-        }
-      }
-    }
-    
-    canvas.drawPath(americasPath, continentPaint);
-    canvas.drawPath(americasPath, continentStroke);
   }
 
-  void _drawOrbitingParticles(Canvas canvas, Offset center, Size size) {
-    final globeRadius = (math.min(size.width, size.height) * 0.35) * zoom;
-    final particlePaint = Paint()..style = PaintingStyle.fill;
-    
-    // Multiple orbit rings
-    for (int ring = 0; ring < 3; ring++) {
-      final orbitRadius = globeRadius * (1.15 + ring * 0.08);
-      final particleCount = 20 + ring * 5;
-      final speed = 1.5 + ring * 0.5;
-      
-      for (int i = 0; i < particleCount; i++) {
-        final angle = (i / particleCount) * math.pi * 2 + rotation * speed;
-        
-        // 3D orbit
-        final inclination = (ring - 1) * 0.3;
-        final x = math.cos(angle) * orbitRadius;
-        final y = math.sin(angle) * orbitRadius * math.cos(inclination);
-        final z = math.sin(angle) * orbitRadius * math.sin(inclination);
-        
-        // Only draw particles in front
-        if (z >= -orbitRadius * 0.5) {
-          final px = center.dx + x;
-          final py = center.dy + y;
-          
-          // Size based on depth
-          final depth = (z + orbitRadius) / (orbitRadius * 2);
-          final particleSize = (2.0 + ring * 0.5) * depth;
-          
-          // Color based on position and ring
-          final hue = ((i / particleCount) * 360 + rotation * 30 + ring * 60) % 360;
-          final opacity = 0.4 + depth * 0.4;
-          particlePaint.color = HSVColor.fromAHSV(opacity, hue, 0.7, 1.0).toColor();
-          
-          canvas.drawCircle(Offset(px, py), particleSize, particlePaint);
-          
-          // Glow for brighter particles
-          if (depth > 0.7) {
-            final glowPaint = Paint()
-              ..color = particlePaint.color.withOpacity(opacity * 0.3)
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-            canvas.drawCircle(Offset(px, py), particleSize * 2, glowPaint);
-          }
-        }
-      }
+  void update(Offset target) {
+    walkPhase += 0.1;
+    vertebrae[0].follow(target);
+
+    for (int i = 1; i < vertebrae.length; i++) {
+      vertebrae[i].follow(vertebrae[i - 1].position);
     }
+  }
+
+  void drawTail(Canvas canvas) {
+    final lastVert = vertebrae.last;
+    final prevVert = vertebrae[vertebrae.length - 2];
+
+    final angle = math.atan2(
+      lastVert.position.dy - prevVert.position.dy,
+      lastVert.position.dx - prevVert.position.dx,
+    );
+
+    const numTailSegments = 5;
+    const segmentLength = 12.0;
+    double x = lastVert.position.dx;
+    double y = lastVert.position.dy;
+
+    for (int i = 0; i < numTailSegments; i++) {
+      final nextX = x + math.cos(angle) * segmentLength;
+      final nextY = y + math.sin(angle) * segmentLength;
+
+      final thickness = 3.0 - (i * 0.5);
+      final segPaint = Paint()
+        ..color = const Color(0xFF555555)
+        ..strokeWidth = thickness
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawLine(Offset(x, y), Offset(nextX, nextY), segPaint);
+
+      final boneSize = 4.0 - (i * 0.6);
+      final bonePaint = Paint()..color = const Color(0xFFD0D0D0);
+      canvas.drawCircle(Offset(x, y), boneSize, bonePaint);
+
+      x = nextX;
+      y = nextY;
+    }
+
+    // Arrow pointu
+    canvas.save();
+    canvas.translate(x, y);
+    canvas.rotate(angle);
+
+    final arrowPaint = Paint()
+      ..color = const Color(0xFFE0E0E0)
+      ..style = PaintingStyle.fill;
+
+    final arrowPath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(25, -8)
+      ..lineTo(30, 0)
+      ..lineTo(25, 8)
+      ..close();
+
+    canvas.drawPath(arrowPath, arrowPaint);
+
+    final arrowStroke = Paint()
+      ..color = const Color(0xFF666666)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawPath(arrowPath, arrowStroke);
+
+    // Pointe
+    final pointPaint = Paint()..color = Colors.white;
+    final pointPath = Path()
+      ..moveTo(25, -5)
+      ..lineTo(35, 0)
+      ..lineTo(25, 5)
+      ..close();
+
+    canvas.drawPath(pointPath, pointPaint);
+    canvas.drawPath(pointPath, arrowStroke);
+
+    // Crochets
+    final hookPaint = Paint()
+      ..color = const Color(0xFF888888)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(const Offset(20, -6), const Offset(18, -12), hookPaint);
+    canvas.drawLine(const Offset(20, 6), const Offset(18, 12), hookPaint);
+
+    // Détails
+    final detailPaint = Paint()
+      ..color = const Color(0xFF555555)
+      ..strokeWidth = 1;
+
+    for (int i = 0; i < 3; i++) {
+      final xPos = 5.0 + i * 7;
+      canvas.drawLine(Offset(xPos, -3), Offset(xPos + 3, -6), detailPaint);
+      canvas.drawLine(Offset(xPos, 3), Offset(xPos + 3, 6), detailPaint);
+    }
+
+    canvas.restore();
+  }
+
+  void drawSkull(Canvas canvas) {
+    final head = vertebrae[0];
+
+    canvas.save();
+    canvas.translate(head.position.dx, head.position.dy);
+    canvas.rotate(head.angle);
+
+    // Crâne principal
+    final skullPaint = Paint()..color = const Color(0xFFE8E8E8);
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
+      skullPaint,
+    );
+
+    final skullStroke = Paint()
+      ..color = const Color(0xFF666666)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
+      skullStroke,
+    );
+
+    // Museau
+    final snoutPath = Path()
+      ..moveTo(60, 0)
+      ..lineTo(80, -3)
+      ..lineTo(80, 3)
+      ..close();
+
+    canvas.drawPath(snoutPath, skullPaint);
+    canvas.drawPath(snoutPath, skullStroke);
+
+    // Orbites
+    final orbitPaint = Paint()..color = Colors.black;
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(35, -12), width: 20, height: 24),
+      orbitPaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(35, 12), width: 20, height: 24),
+      orbitPaint,
+    );
+
+    // Yeux rouges
+    final eyePaint = Paint()..color = const Color(0xFFFF0000);
+    canvas.drawCircle(const Offset(35, -12), 5, eyePaint);
+    canvas.drawCircle(const Offset(35, 12), 5, eyePaint);
+
+    // Mâchoire
+    final jawPath = Path()
+      ..moveTo(-10, 0)
+      ..lineTo(60, -10)
+      ..lineTo(78, 0)
+      ..lineTo(60, 10)
+      ..close();
+
+    final jawPaint = Paint()..color = const Color(0xFFD8D8D8);
+    canvas.drawPath(jawPath, jawPaint);
+    canvas.drawPath(jawPath, skullStroke);
+
+    // Crocs
+    final fangPaint = Paint()..color = Colors.white;
+    final fangStroke = Paint()
+      ..color = const Color(0xFF444444)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    for (int i = 0; i < 2; i++) {
+      final x = 55.0 + i * 15;
+      final topFang = Path()
+        ..moveTo(x, -8)
+        ..lineTo(x - 3, -18)
+        ..lineTo(x + 3, -18)
+        ..close();
+
+      canvas.drawPath(topFang, fangPaint);
+      canvas.drawPath(topFang, fangStroke);
+
+      final bottomFang = Path()
+        ..moveTo(x, 8)
+        ..lineTo(x - 3, 18)
+        ..lineTo(x + 3, 18)
+        ..close();
+
+      canvas.drawPath(bottomFang, fangPaint);
+      canvas.drawPath(bottomFang, fangStroke);
+    }
+
+    // Petites dents
+    for (int i = 0; i < 3; i++) {
+      final x = 48.0 + i * 6;
+      final topTooth = Path()
+        ..moveTo(x, -6)
+        ..lineTo(x - 1.5, -11)
+        ..lineTo(x + 1.5, -11)
+        ..close();
+
+      canvas.drawPath(topTooth, fangPaint);
+      canvas.drawPath(topTooth, fangStroke);
+
+      final bottomTooth = Path()
+        ..moveTo(x, 6)
+        ..lineTo(x - 1.5, 11)
+        ..lineTo(x + 1.5, 11)
+        ..close();
+
+      canvas.drawPath(bottomTooth, fangPaint);
+      canvas.drawPath(bottomTooth, fangStroke);
+    }
+
+    // Fissures
+    final crackPaint = Paint()
+      ..color = const Color(0xFF555555)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(const Offset(10, -18), const Offset(45, -18), crackPaint);
+    canvas.drawLine(const Offset(10, 18), const Offset(45, 18), crackPaint);
+    canvas.drawLine(const Offset(20, 0), const Offset(15, -10), crackPaint);
+
+    canvas.restore();
+  }
+}
+
+class SkeletonPainter extends CustomPainter {
+  final SnakeSkeleton snake;
+
+  SkeletonPainter(this.snake);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Connexions
+    final connectionPaint = Paint()
+      ..color = const Color(0xFF555555)
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < snake.vertebrae.length - 1; i++) {
+      final v1 = snake.vertebrae[i];
+      final v2 = snake.vertebrae[i + 1];
+      canvas.drawLine(v1.position, v2.position, connectionPaint);
+    }
+
+    // Vertèbres
+    for (int i = snake.vertebrae.length - 1; i >= 0; i--) {
+      snake.vertebrae[i].draw(canvas, snake.walkPhase);
+    }
+
+    snake.drawTail(canvas);
+    snake.drawSkull(canvas);
   }
 
   @override
-  bool shouldRepaint(covariant SpaceGlobePainter oldDelegate) {
-    return rotation != oldDelegate.rotation || zoom != oldDelegate.zoom;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
