@@ -34,6 +34,9 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   bool _isDragging = false;
   double _time = 0;
   late SnakeSkeleton _snake;
+  List<Food> _foods = [];
+  bool _isGameOver = false;
+  int _score = 0;
 
   @override
   void initState() {
@@ -44,11 +47,14 @@ class _SkeletonScreenState extends State<SkeletonScreen>
     )..repeat();
 
     _controller.addListener(() {
-      setState(() {
-        if (!_isDragging) {
-          _time += 0.01;
-        }
-      });
+      if (!_isGameOver) {
+        setState(() {
+          if (!_isDragging) {
+            _time += 0.01;
+          }
+          _checkCollisions();
+        });
+      }
     });
   }
 
@@ -59,6 +65,71 @@ class _SkeletonScreenState extends State<SkeletonScreen>
     _dragPosition = Offset(size.width / 2, size.height / 2);
     _lastDragPosition = _dragPosition;
     _snake = SnakeSkeleton(25, _dragPosition);
+    _spawnFood(size);
+  }
+
+  void _spawnFood(Size size) {
+    final random = math.Random();
+    _foods = List.generate(5, (index) {
+      return Food(
+        position: Offset(
+          random.nextDouble() * size.width,
+          random.nextDouble() * size.height,
+        ),
+      );
+    });
+  }
+
+  void _checkCollisions() {
+    final size = MediaQuery.of(context).size;
+    final head = _snake.vertebrae[0].position;
+
+    // Check food collision
+    for (int i = _foods.length - 1; i >= 0; i--) {
+      final food = _foods[i];
+      final distance = (head - food.position).distance;
+      
+      if (distance < 30) {
+        setState(() {
+          _foods.removeAt(i);
+          _snake.grow();
+          _score++;
+          
+          // Spawn new food
+          final random = math.Random();
+          _foods.add(Food(
+            position: Offset(
+              random.nextDouble() * size.width,
+              random.nextDouble() * size.height,
+            ),
+          ));
+        });
+      }
+    }
+
+    // Check self collision (skip first few vertebrae)
+    for (int i = 5; i < _snake.vertebrae.length; i++) {
+      final distance = (head - _snake.vertebrae[i].position).distance;
+      if (distance < 15) {
+        setState(() {
+          _isGameOver = true;
+        });
+        break;
+      }
+    }
+  }
+
+  void _restartGame() {
+    final size = MediaQuery.of(context).size;
+    setState(() {
+      _isGameOver = false;
+      _score = 0;
+      _time = 0;
+      _dragPosition = Offset(size.width / 2, size.height / 2);
+      _lastDragPosition = _dragPosition;
+      _snake = SnakeSkeleton(25, _dragPosition);
+      _spawnFood(size);
+    });
   }
 
   @override
@@ -102,36 +173,166 @@ class _SkeletonScreenState extends State<SkeletonScreen>
     final size = MediaQuery.of(context).size;
     final targetPosition = _isDragging ? _dragPosition : _getAutoPosition(size);
 
-    _snake.update(targetPosition);
+    if (!_isGameOver) {
+      _snake.update(targetPosition);
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onPanStart: (details) {
-          setState(() {
-            _isDragging = true;
-            _dragPosition = details.localPosition;
-            _lastDragPosition = _dragPosition;
-          });
-        },
-        onPanUpdate: (details) {
-          setState(() {
-            _dragPosition = details.localPosition;
-            _lastDragPosition = _dragPosition;
-          });
-        },
-        onPanEnd: (details) {
-          setState(() {
-            _isDragging = false;
-            _time = 0;
-          });
-        },
-        child: CustomPaint(
-          size: size,
-          painter: SkeletonPainter(_snake),
-        ),
+      body: Stack(
+        children: [
+          GestureDetector(
+            onPanStart: (details) {
+              if (!_isGameOver) {
+                setState(() {
+                  _isDragging = true;
+                  _dragPosition = details.localPosition;
+                  _lastDragPosition = _dragPosition;
+                });
+              }
+            },
+            onPanUpdate: (details) {
+              if (!_isGameOver) {
+                setState(() {
+                  _dragPosition = details.localPosition;
+                  _lastDragPosition = _dragPosition;
+                });
+              }
+            },
+            onPanEnd: (details) {
+              if (!_isGameOver) {
+                setState(() {
+                  _isDragging = false;
+                  _time = 0;
+                });
+              }
+            },
+            child: CustomPaint(
+              size: size,
+              painter: SkeletonPainter(_snake, _foods),
+            ),
+          ),
+          // Score display
+          Positioned(
+            top: 40,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white24, width: 2),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.star, color: Colors.amber, size: 24),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Score: $_score',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Game Over overlay
+          if (_isGameOver)
+            Container(
+              color: Colors.black87,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.sentiment_dissatisfied,
+                      size: 80,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'GAME OVER',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Final Score: $_score',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    ElevatedButton(
+                      onPressed: _restartGame,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 20,
+                        ),
+                      ),
+                      child: const Text(
+                        'RESTART',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
+  }
+}
+
+class Food {
+  final Offset position;
+  
+  Food({required this.position});
+
+  void draw(Canvas canvas) {
+    // Glow effect
+    final glowPaint = Paint()
+      ..color = Colors.green.withOpacity(0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 15);
+    canvas.drawCircle(position, 20, glowPaint);
+
+    // Outer circle
+    final outerPaint = Paint()
+      ..color = const Color(0xFF00FF00)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(position, 12, outerPaint);
+
+    // Inner circle
+    final innerPaint = Paint()
+      ..color = const Color(0xFF88FF88)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(position, 8, innerPaint);
+
+    // Center dot
+    final centerPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(position, 3, centerPaint);
+
+    // Border
+    final borderPaint = Paint()
+      ..color = const Color(0xFF00AA00)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(position, 12, borderPaint);
   }
 }
 
@@ -193,7 +394,6 @@ class Leg {
       canvas.drawCircle(seg.start, jointSize, jointPaint);
     }
 
-    // Griffes
     if (segments.isNotEmpty) {
       final lastSeg = segments.last;
       final clawPaint = Paint()
@@ -232,7 +432,7 @@ class Vertebra {
   double size;
   double angle;
   final int index;
-  final int total;
+  int total;
   final List<Leg> legs = [];
 
   Vertebra({
@@ -242,10 +442,20 @@ class Vertebra {
     required this.index,
     required this.total,
   }) {
+    _updateLegs();
+  }
+
+  void _updateLegs() {
+    legs.clear();
     if (index >= 2 && index < total - 3) {
       legs.add(Leg('left', index, total));
       legs.add(Leg('right', index, total));
     }
+  }
+
+  void updateTotal(int newTotal) {
+    total = newTotal;
+    _updateLegs();
   }
 
   void follow(Offset target) {
@@ -270,7 +480,6 @@ class Vertebra {
     final progress = index / total;
     final currentSize = size * (1 - progress * 0.3);
 
-    // Dessiner les pattes
     for (var leg in legs) {
       leg.update(position, angle, walkPhase);
       leg.draw(canvas, progress);
@@ -280,7 +489,6 @@ class Vertebra {
     canvas.translate(position.dx, position.dy);
     canvas.rotate(angle);
 
-    // Corps de la vertèbre
     final bodyPaint = Paint()
       ..color = const Color(0xFFD8D8D8)
       ..style = PaintingStyle.fill;
@@ -308,7 +516,6 @@ class Vertebra {
       strokePaint,
     );
 
-    // Canal vertébral
     final canalPaint = Paint()..color = Colors.black;
     canvas.drawOval(
       Rect.fromCenter(
@@ -319,7 +526,6 @@ class Vertebra {
       canalPaint,
     );
 
-    // Processus transverses
     final transverseLength = currentSize * 2;
     final transverseWidth = currentSize * 0.6;
     final transversePaint = Paint()..color = const Color(0xFFC8C8C8);
@@ -364,7 +570,7 @@ class Vertebra {
 
 class SnakeSkeleton {
   final List<Vertebra> vertebrae = [];
-  final int numVertebrae;
+  int numVertebrae;
   final double baseSize = 20;
   double walkPhase = 0;
 
@@ -381,6 +587,39 @@ class SnakeSkeleton {
         index: i,
         total: numVertebrae,
       ));
+    }
+  }
+
+  void grow() {
+    final lastVert = vertebrae.last;
+    final prevVert = vertebrae[vertebrae.length - 2];
+    
+    final angle = math.atan2(
+      lastVert.position.dy - prevVert.position.dy,
+      lastVert.position.dx - prevVert.position.dx,
+    );
+    
+    // Add 3 new segments when eating
+    for (int i = 0; i < 3; i++) {
+      numVertebrae++;
+      final size = baseSize * (1 - (numVertebrae / (numVertebrae + 1)) * 0.5);
+      final spacing = size * 0.8;
+      
+      vertebrae.add(Vertebra(
+        position: Offset(
+          lastVert.position.dx + math.cos(angle) * spacing * (i + 1),
+          lastVert.position.dy + math.sin(angle) * spacing * (i + 1),
+        ),
+        size: size,
+        angle: angle,
+        index: vertebrae.length,
+        total: numVertebrae,
+      ));
+    }
+    
+    // Update total count for all vertebrae
+    for (var vert in vertebrae) {
+      vert.updateTotal(numVertebrae);
     }
   }
 
@@ -427,7 +666,6 @@ class SnakeSkeleton {
       y = nextY;
     }
 
-    // Arrow pointu
     canvas.save();
     canvas.translate(x, y);
     canvas.rotate(angle);
@@ -452,7 +690,6 @@ class SnakeSkeleton {
 
     canvas.drawPath(arrowPath, arrowStroke);
 
-    // Pointe
     final pointPaint = Paint()..color = Colors.white;
     final pointPath = Path()
       ..moveTo(25, -5)
@@ -463,7 +700,6 @@ class SnakeSkeleton {
     canvas.drawPath(pointPath, pointPaint);
     canvas.drawPath(pointPath, arrowStroke);
 
-    // Crochets
     final hookPaint = Paint()
       ..color = const Color(0xFF888888)
       ..strokeWidth = 2
@@ -472,7 +708,6 @@ class SnakeSkeleton {
     canvas.drawLine(const Offset(20, -6), const Offset(18, -12), hookPaint);
     canvas.drawLine(const Offset(20, 6), const Offset(18, 12), hookPaint);
 
-    // Détails
     final detailPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 1;
@@ -493,7 +728,6 @@ class SnakeSkeleton {
     canvas.translate(head.position.dx, head.position.dy);
     canvas.rotate(head.angle);
 
-    // Crâne principal
     final skullPaint = Paint()..color = const Color(0xFFE8E8E8);
     canvas.drawOval(
       Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
@@ -510,7 +744,6 @@ class SnakeSkeleton {
       skullStroke,
     );
 
-    // Museau
     final snoutPath = Path()
       ..moveTo(60, 0)
       ..lineTo(80, -3)
@@ -520,7 +753,6 @@ class SnakeSkeleton {
     canvas.drawPath(snoutPath, skullPaint);
     canvas.drawPath(snoutPath, skullStroke);
 
-    // Orbites
     final orbitPaint = Paint()..color = Colors.black;
     canvas.drawOval(
       Rect.fromCenter(center: const Offset(35, -12), width: 20, height: 24),
@@ -531,12 +763,10 @@ class SnakeSkeleton {
       orbitPaint,
     );
 
-    // Yeux rouges
     final eyePaint = Paint()..color = const Color(0xFFFF0000);
     canvas.drawCircle(const Offset(35, -12), 5, eyePaint);
     canvas.drawCircle(const Offset(35, 12), 5, eyePaint);
 
-    // Mâchoire
     final jawPath = Path()
       ..moveTo(-10, 0)
       ..lineTo(60, -10)
@@ -548,7 +778,6 @@ class SnakeSkeleton {
     canvas.drawPath(jawPath, jawPaint);
     canvas.drawPath(jawPath, skullStroke);
 
-    // Crocs
     final fangPaint = Paint()..color = Colors.white;
     final fangStroke = Paint()
       ..color = const Color(0xFF444444)
@@ -576,7 +805,6 @@ class SnakeSkeleton {
       canvas.drawPath(bottomFang, fangStroke);
     }
 
-    // Petites dents
     for (int i = 0; i < 3; i++) {
       final x = 48.0 + i * 6;
       final topTooth = Path()
@@ -598,7 +826,6 @@ class SnakeSkeleton {
       canvas.drawPath(bottomTooth, fangStroke);
     }
 
-    // Fissures
     final crackPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 1.5
@@ -614,12 +841,17 @@ class SnakeSkeleton {
 
 class SkeletonPainter extends CustomPainter {
   final SnakeSkeleton snake;
+  final List<Food> foods;
 
-  SkeletonPainter(this.snake);
+  SkeletonPainter(this.snake, this.foods);
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Connexions
+    // Draw food first
+    for (var food in foods) {
+      food.draw(canvas);
+    }
+
     final connectionPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 4
@@ -631,7 +863,6 @@ class SkeletonPainter extends CustomPainter {
       canvas.drawLine(v1.position, v2.position, connectionPaint);
     }
 
-    // Vertèbres
     for (int i = snake.vertebrae.length - 1; i >= 0; i--) {
       snake.vertebrae[i].draw(canvas, snake.walkPhase);
     }
