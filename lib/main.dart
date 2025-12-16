@@ -33,10 +33,13 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   Offset _lastDragPosition = Offset.zero;
   bool _isDragging = false;
   double _time = 0;
-  late SnakeSkeleton _snake;
+  late SnakeSkeleton _playerSnake;
+  List<BotSnake> _bots = [];
   List<Food> _foods = [];
   bool _isGameOver = false;
   int _score = 0;
+  Offset _cameraOffset = Offset.zero;
+  final double _worldSize = 2000;
 
   @override
   void initState() {
@@ -52,7 +55,9 @@ class _SkeletonScreenState extends State<SkeletonScreen>
           if (!_isDragging) {
             _time += 0.01;
           }
+          _updateBots();
           _checkCollisions();
+          _updateCamera();
         });
       }
     });
@@ -62,59 +67,284 @@ class _SkeletonScreenState extends State<SkeletonScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final size = MediaQuery.of(context).size;
-    _dragPosition = Offset(size.width / 2, size.height / 2);
+    _dragPosition = Offset(_worldSize / 2, _worldSize / 2);
     _lastDragPosition = _dragPosition;
-    _snake = SnakeSkeleton(25, _dragPosition);
+    _playerSnake = SnakeSkeleton(25, _dragPosition, isPlayer: true);
     _spawnFood(size);
+    _spawnBots();
   }
 
-  void _spawnFood(Size size) {
+  void _spawnBots() {
     final random = math.Random();
-    _foods = List.generate(5, (index) {
-      return Food(
+    _bots = List.generate(5, (index) {
+      return BotSnake(
         position: Offset(
-          random.nextDouble() * size.width,
-          random.nextDouble() * size.height,
+          random.nextDouble() * _worldSize,
+          random.nextDouble() * _worldSize,
+        ),
+        initialSize: 15 + random.nextInt(20),
+        color: Color.fromRGBO(
+          100 + random.nextInt(155),
+          100 + random.nextInt(155),
+          100 + random.nextInt(155),
+          1,
         ),
       );
     });
   }
 
+  void _spawnFood(Size size) {
+    final random = math.Random();
+    _foods = List.generate(30, (index) {
+      return Food(
+        position: Offset(
+          random.nextDouble() * _worldSize,
+          random.nextDouble() * _worldSize,
+        ),
+      );
+    });
+  }
+
+  void _updateBots() {
+    final random = math.Random();
+    
+    for (var bot in _bots) {
+      // Find nearest food
+      Food? nearestFood;
+      double nearestDistance = double.infinity;
+      
+      for (var food in _foods) {
+        final distance = (bot.snake.vertebrae[0].position - food.position).distance;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestFood = food;
+        }
+      }
+
+      // Move towards food or randomly
+      Offset target;
+      if (nearestFood != null && nearestDistance < 400) {
+        target = nearestFood.position;
+      } else {
+        // Random movement
+        bot.moveTime += 0.05;
+        target = Offset(
+          bot.basePosition.dx + math.sin(bot.moveTime) * 300,
+          bot.basePosition.dy + math.cos(bot.moveTime * 0.7) * 300,
+        );
+        
+        // Update base position occasionally
+        if (random.nextDouble() < 0.01) {
+          bot.basePosition = bot.snake.vertebrae[0].position;
+        }
+      }
+
+      // Keep bots within world bounds
+      target = Offset(
+        target.dx.clamp(100, _worldSize - 100),
+        target.dy.clamp(100, _worldSize - 100),
+      );
+
+      bot.snake.update(target);
+    }
+  }
+
+  void _updateCamera() {
+    final size = MediaQuery.of(context).size;
+    final playerHead = _playerSnake.vertebrae[0].position;
+    
+    // Center camera on player
+    _cameraOffset = Offset(
+      size.width / 2 - playerHead.dx,
+      size.height / 2 - playerHead.dy,
+    );
+  }
+
   void _checkCollisions() {
     final size = MediaQuery.of(context).size;
-    final head = _snake.vertebrae[0].position;
+    final playerHead = _playerSnake.vertebrae[0].position;
+    final playerSize = _playerSnake.numVertebrae;
 
-    // Check food collision
+    // Check food collision for player
     for (int i = _foods.length - 1; i >= 0; i--) {
       final food = _foods[i];
-      final distance = (head - food.position).distance;
+      final distance = (playerHead - food.position).distance;
       
       if (distance < 30) {
         setState(() {
           _foods.removeAt(i);
-          _snake.grow();
+          _playerSnake.grow();
           _score++;
           
           // Spawn new food
           final random = math.Random();
           _foods.add(Food(
             position: Offset(
-              random.nextDouble() * size.width,
-              random.nextDouble() * size.height,
+              random.nextDouble() * _worldSize,
+              random.nextDouble() * _worldSize,
             ),
           ));
         });
       }
     }
 
-    // Check self collision (skip first few vertebrae)
-    for (int i = 5; i < _snake.vertebrae.length; i++) {
-      final distance = (head - _snake.vertebrae[i].position).distance;
+    // Check food collision for bots
+    for (var bot in _bots) {
+      final botHead = bot.snake.vertebrae[0].position;
+      
+      for (int i = _foods.length - 1; i >= 0; i--) {
+        final food = _foods[i];
+        final distance = (botHead - food.position).distance;
+        
+        if (distance < 30) {
+          setState(() {
+            _foods.removeAt(i);
+            bot.snake.grow();
+            bot.score++;
+            
+            // Spawn new food
+            final random = math.Random();
+            _foods.add(Food(
+              position: Offset(
+                random.nextDouble() * _worldSize,
+                random.nextDouble() * _worldSize,
+              ),
+            ));
+          });
+        }
+      }
+    }
+
+    // Check player self collision
+    for (int i = 5; i < _playerSnake.vertebrae.length; i++) {
+      final distance = (playerHead - _playerSnake.vertebrae[i].position).distance;
       if (distance < 15) {
         setState(() {
           _isGameOver = true;
         });
-        break;
+        return;
+      }
+    }
+
+    // Check player vs bots collision
+    for (int botIndex = _bots.length - 1; botIndex >= 0; botIndex--) {
+      final bot = _bots[botIndex];
+      final botHead = bot.snake.vertebrae[0].position;
+      final botSize = bot.snake.numVertebrae;
+      
+      // Check if player head hits bot body
+      for (int i = 2; i < bot.snake.vertebrae.length; i++) {
+        final distance = (playerHead - bot.snake.vertebrae[i].position).distance;
+        if (distance < 20) {
+          if (playerSize > botSize) {
+            // Player eats bot
+            setState(() {
+              _score += bot.score + 5;
+              _playerSnake.numVertebrae += bot.snake.numVertebrae ~/ 2;
+              _bots.removeAt(botIndex);
+              
+              // Respawn bot
+              final random = math.Random();
+              _bots.add(BotSnake(
+                position: Offset(
+                  random.nextDouble() * _worldSize,
+                  random.nextDouble() * _worldSize,
+                ),
+                initialSize: 15 + random.nextInt(15),
+                color: Color.fromRGBO(
+                  100 + random.nextInt(155),
+                  100 + random.nextInt(155),
+                  100 + random.nextInt(155),
+                  1,
+                ),
+              ));
+            });
+          } else {
+            // Bot eats player - game over
+            setState(() {
+              _isGameOver = true;
+            });
+          }
+          return;
+        }
+      }
+      
+      // Check if bot head hits player body
+      for (int i = 2; i < _playerSnake.vertebrae.length; i++) {
+        final distance = (botHead - _playerSnake.vertebrae[i].position).distance;
+        if (distance < 20) {
+          if (botSize > playerSize) {
+            // Bot eats player - game over
+            setState(() {
+              _isGameOver = true;
+            });
+          } else {
+            // Player eats bot (bot hit player)
+            setState(() {
+              _score += bot.score + 5;
+              _playerSnake.numVertebrae += bot.snake.numVertebrae ~/ 2;
+              _bots.removeAt(botIndex);
+              
+              // Respawn bot
+              final random = math.Random();
+              _bots.add(BotSnake(
+                position: Offset(
+                  random.nextDouble() * _worldSize,
+                  random.nextDouble() * _worldSize,
+                ),
+                initialSize: 15 + random.nextInt(15),
+                color: Color.fromRGBO(
+                  100 + random.nextInt(155),
+                  100 + random.nextInt(155),
+                  100 + random.nextInt(155),
+                  1,
+                ),
+              ));
+            });
+          }
+          return;
+        }
+      }
+    }
+
+    // Check bot vs bot collisions
+    for (int i = 0; i < _bots.length; i++) {
+      for (int j = i + 1; j < _bots.length; j++) {
+        final bot1 = _bots[i];
+        final bot2 = _bots[j];
+        final bot1Head = bot1.snake.vertebrae[0].position;
+        final bot2Head = bot2.snake.vertebrae[0].position;
+        
+        // Check bot1 head vs bot2 body
+        for (int k = 2; k < bot2.snake.vertebrae.length; k++) {
+          final distance = (bot1Head - bot2.snake.vertebrae[k].position).distance;
+          if (distance < 20) {
+            setState(() {
+              if (bot1.snake.numVertebrae > bot2.snake.numVertebrae) {
+                bot1.snake.numVertebrae += bot2.snake.numVertebrae ~/ 2;
+                bot1.score += bot2.score;
+                _bots.removeAt(j);
+                
+                // Respawn
+                final random = math.Random();
+                _bots.add(BotSnake(
+                  position: Offset(
+                    random.nextDouble() * _worldSize,
+                    random.nextDouble() * _worldSize,
+                  ),
+                  initialSize: 15 + random.nextInt(15),
+                  color: Color.fromRGBO(
+                    100 + random.nextInt(155),
+                    100 + random.nextInt(155),
+                    100 + random.nextInt(155),
+                    1,
+                  ),
+                ));
+              }
+            });
+            return;
+          }
+        }
       }
     }
   }
@@ -125,10 +355,11 @@ class _SkeletonScreenState extends State<SkeletonScreen>
       _isGameOver = false;
       _score = 0;
       _time = 0;
-      _dragPosition = Offset(size.width / 2, size.height / 2);
+      _dragPosition = Offset(_worldSize / 2, _worldSize / 2);
       _lastDragPosition = _dragPosition;
-      _snake = SnakeSkeleton(25, _dragPosition);
+      _playerSnake = SnakeSkeleton(25, _dragPosition, isPlayer: true);
       _spawnFood(size);
+      _spawnBots();
     });
   }
 
@@ -174,7 +405,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
     final targetPosition = _isDragging ? _dragPosition : _getAutoPosition(size);
 
     if (!_isGameOver) {
-      _snake.update(targetPosition);
+      _playerSnake.update(targetPosition);
     }
 
     return Scaffold(
@@ -186,7 +417,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
               if (!_isGameOver) {
                 setState(() {
                   _isDragging = true;
-                  _dragPosition = details.localPosition;
+                  _dragPosition = details.localPosition - _cameraOffset;
                   _lastDragPosition = _dragPosition;
                 });
               }
@@ -194,7 +425,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
             onPanUpdate: (details) {
               if (!_isGameOver) {
                 setState(() {
-                  _dragPosition = details.localPosition;
+                  _dragPosition = details.localPosition - _cameraOffset;
                   _lastDragPosition = _dragPosition;
                 });
               }
@@ -209,7 +440,7 @@ class _SkeletonScreenState extends State<SkeletonScreen>
             },
             child: CustomPaint(
               size: size,
-              painter: SkeletonPainter(_snake, _foods),
+              painter: SkeletonPainter(_playerSnake, _bots, _foods, _cameraOffset, _worldSize),
             ),
           ),
           // Score display
@@ -219,22 +450,71 @@ class _SkeletonScreenState extends State<SkeletonScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.black54,
+                color: Colors.black87,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.white24, width: 2),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.star, color: Colors.amber, size: 24),
-                  const SizedBox(width: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber, size: 24),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Score: $_score',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    'Score: $_score',
+                    'Size: ${_playerSnake.numVertebrae}',
                     style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Leaderboard
+          Positioned(
+            top: 40,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.white24, width: 2),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Leaderboard',
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  _buildLeaderboardEntry('You', _score, _playerSnake.numVertebrae, Colors.greenAccent),
+                  ..._bots.asMap().entries.map((entry) {
+                    return _buildLeaderboardEntry(
+                      'Bot ${entry.key + 1}',
+                      entry.value.score,
+                      entry.value.snake.numVertebrae,
+                      entry.value.color,
+                    );
+                  }).toList(),
                 ],
               ),
             ),
@@ -269,6 +549,13 @@ class _SkeletonScreenState extends State<SkeletonScreen>
                         fontSize: 32,
                       ),
                     ),
+                    Text(
+                      'Final Size: ${_playerSnake.numVertebrae}',
+                      style: const TextStyle(
+                        color: Colors.greenAccent,
+                        fontSize: 24,
+                      ),
+                    ),
                     const SizedBox(height: 40),
                     ElevatedButton(
                       onPressed: _restartGame,
@@ -295,6 +582,57 @@ class _SkeletonScreenState extends State<SkeletonScreen>
       ),
     );
   }
+
+  Widget _buildLeaderboardEntry(String name, int score, int size, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 60,
+            child: Text(
+              name,
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Text(
+            '$score ($size)',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BotSnake {
+  final SnakeSkeleton snake;
+  int score = 0;
+  Offset basePosition;
+  double moveTime = 0;
+  final Color color;
+
+  BotSnake({
+    required Offset position,
+    required int initialSize,
+    required this.color,
+  })  : snake = SnakeSkeleton(initialSize, position, isPlayer: false, color: color),
+        basePosition = position;
 }
 
 class Food {
@@ -344,8 +682,9 @@ class Leg {
   late double baseLength;
   late double segmentLength;
   List<LegSegment> segments = [];
+  final Color color;
 
-  Leg(this.side, this.vertebraIndex, this.totalVertebrae) {
+  Leg(this.side, this.vertebraIndex, this.totalVertebrae, {this.color = const Color(0xFFB0B0B0)}) {
     final progress = vertebraIndex / totalVertebrae;
     baseLength = 25 - (progress * 18);
     segmentLength = baseLength / numSegments;
@@ -378,7 +717,7 @@ class Leg {
   void draw(Canvas canvas, double progress) {
     final thickness = 3.0 - (progress * 1.5);
     final paint = Paint()
-      ..color = const Color(0xFFB0B0B0)
+      ..color = color
       ..strokeWidth = thickness
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
@@ -388,7 +727,7 @@ class Leg {
 
       final jointSize = 4.0 - (progress * 2);
       final jointPaint = Paint()
-        ..color = const Color(0xFFD0D0D0)
+        ..color = color.withOpacity(0.8)
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(seg.start, jointSize, jointPaint);
@@ -397,7 +736,7 @@ class Leg {
     if (segments.isNotEmpty) {
       final lastSeg = segments.last;
       final clawPaint = Paint()
-        ..color = const Color(0xFF888888)
+        ..color = color.withOpacity(0.6)
         ..strokeWidth = 1
         ..strokeCap = StrokeCap.round;
 
@@ -434,6 +773,7 @@ class Vertebra {
   final int index;
   int total;
   final List<Leg> legs = [];
+  final Color color;
 
   Vertebra({
     required this.position,
@@ -441,6 +781,7 @@ class Vertebra {
     required this.angle,
     required this.index,
     required this.total,
+    this.color = const Color(0xFFD8D8D8),
   }) {
     _updateLegs();
   }
@@ -448,8 +789,8 @@ class Vertebra {
   void _updateLegs() {
     legs.clear();
     if (index >= 2 && index < total - 3) {
-      legs.add(Leg('left', index, total));
-      legs.add(Leg('right', index, total));
+      legs.add(Leg('left', index, total, color: color));
+      legs.add(Leg('right', index, total, color: color));
     }
   }
 
@@ -490,7 +831,7 @@ class Vertebra {
     canvas.rotate(angle);
 
     final bodyPaint = Paint()
-      ..color = const Color(0xFFD8D8D8)
+      ..color = color
       ..style = PaintingStyle.fill;
 
     canvas.drawOval(
@@ -503,7 +844,7 @@ class Vertebra {
     );
 
     final strokePaint = Paint()
-      ..color = const Color(0xFF666666)
+      ..color = color.withOpacity(0.5)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
@@ -528,7 +869,7 @@ class Vertebra {
 
     final transverseLength = currentSize * 2;
     final transverseWidth = currentSize * 0.6;
-    final transversePaint = Paint()..color = const Color(0xFFC8C8C8);
+    final transversePaint = Paint()..color = color.withOpacity(0.9);
 
     canvas.drawOval(
       Rect.fromCenter(
@@ -573,8 +914,13 @@ class SnakeSkeleton {
   int numVertebrae;
   final double baseSize = 20;
   double walkPhase = 0;
+  final bool isPlayer;
+  final Color color;
 
-  SnakeSkeleton(this.numVertebrae, Offset initialPosition) {
+  SnakeSkeleton(this.numVertebrae, Offset initialPosition, {
+    this.isPlayer = true,
+    this.color = const Color(0xFFD8D8D8),
+  }) {
     for (int i = 0; i < numVertebrae; i++) {
       final size = baseSize * (1 - (i / numVertebrae) * 0.5);
       vertebrae.add(Vertebra(
@@ -586,6 +932,7 @@ class SnakeSkeleton {
         angle: 0,
         index: i,
         total: numVertebrae,
+        color: color,
       ));
     }
   }
@@ -614,6 +961,7 @@ class SnakeSkeleton {
         angle: angle,
         index: vertebrae.length,
         total: numVertebrae,
+        color: color,
       ));
     }
     
@@ -652,14 +1000,14 @@ class SnakeSkeleton {
 
       final thickness = 3.0 - (i * 0.5);
       final segPaint = Paint()
-        ..color = const Color(0xFF555555)
+        ..color = color.withOpacity(0.4)
         ..strokeWidth = thickness
         ..strokeCap = StrokeCap.round;
 
       canvas.drawLine(Offset(x, y), Offset(nextX, nextY), segPaint);
 
       final boneSize = 4.0 - (i * 0.6);
-      final bonePaint = Paint()..color = const Color(0xFFD0D0D0);
+      final bonePaint = Paint()..color = color.withOpacity(0.8);
       canvas.drawCircle(Offset(x, y), boneSize, bonePaint);
 
       x = nextX;
@@ -671,7 +1019,7 @@ class SnakeSkeleton {
     canvas.rotate(angle);
 
     final arrowPaint = Paint()
-      ..color = const Color(0xFFE0E0E0)
+      ..color = color.withOpacity(0.9)
       ..style = PaintingStyle.fill;
 
     final arrowPath = Path()
@@ -684,7 +1032,7 @@ class SnakeSkeleton {
     canvas.drawPath(arrowPath, arrowPaint);
 
     final arrowStroke = Paint()
-      ..color = const Color(0xFF666666)
+      ..color = color.withOpacity(0.5)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
@@ -701,7 +1049,7 @@ class SnakeSkeleton {
     canvas.drawPath(pointPath, arrowStroke);
 
     final hookPaint = Paint()
-      ..color = const Color(0xFF888888)
+      ..color = color.withOpacity(0.6)
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
 
@@ -709,7 +1057,7 @@ class SnakeSkeleton {
     canvas.drawLine(const Offset(20, 6), const Offset(18, 12), hookPaint);
 
     final detailPaint = Paint()
-      ..color = const Color(0xFF555555)
+      ..color = color.withOpacity(0.4)
       ..strokeWidth = 1;
 
     for (int i = 0; i < 3; i++) {
@@ -728,14 +1076,14 @@ class SnakeSkeleton {
     canvas.translate(head.position.dx, head.position.dy);
     canvas.rotate(head.angle);
 
-    final skullPaint = Paint()..color = const Color(0xFFE8E8E8);
+    final skullPaint = Paint()..color = color;
     canvas.drawOval(
       Rect.fromCenter(center: const Offset(25, 0), width: 70, height: 40),
       skullPaint,
     );
 
     final skullStroke = Paint()
-      ..color = const Color(0xFF666666)
+      ..color = color.withOpacity(0.5)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
@@ -763,7 +1111,8 @@ class SnakeSkeleton {
       orbitPaint,
     );
 
-    final eyePaint = Paint()..color = const Color(0xFFFF0000);
+    final eyeColor = isPlayer ? const Color(0xFFFF0000) : const Color(0xFFFFAA00);
+    final eyePaint = Paint()..color = eyeColor;
     canvas.drawCircle(const Offset(35, -12), 5, eyePaint);
     canvas.drawCircle(const Offset(35, 12), 5, eyePaint);
 
@@ -774,7 +1123,7 @@ class SnakeSkeleton {
       ..lineTo(60, 10)
       ..close();
 
-    final jawPaint = Paint()..color = const Color(0xFFD8D8D8);
+    final jawPaint = Paint()..color = color.withOpacity(0.9);
     canvas.drawPath(jawPath, jawPaint);
     canvas.drawPath(jawPath, skullStroke);
 
@@ -827,7 +1176,7 @@ class SnakeSkeleton {
     }
 
     final crackPaint = Paint()
-      ..color = const Color(0xFF555555)
+      ..color = color.withOpacity(0.4)
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
 
@@ -840,35 +1189,82 @@ class SnakeSkeleton {
 }
 
 class SkeletonPainter extends CustomPainter {
-  final SnakeSkeleton snake;
+  final SnakeSkeleton playerSnake;
+  final List<BotSnake> bots;
   final List<Food> foods;
+  final Offset cameraOffset;
+  final double worldSize;
 
-  SkeletonPainter(this.snake, this.foods);
+  SkeletonPainter(this.playerSnake, this.bots, this.foods, this.cameraOffset, this.worldSize);
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw food first
+    canvas.save();
+    canvas.translate(cameraOffset.dx, cameraOffset.dy);
+
+    // Draw world boundary
+    final boundaryPaint = Paint()
+      ..color = Colors.grey.withOpacity(0.2)
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(Rect.fromLTWH(0, 0, worldSize, worldSize), boundaryPaint);
+
+    // Draw grid
+    final gridPaint = Paint()
+      ..color = Colors.grey.withOpacity(0.1)
+      ..strokeWidth = 1;
+    
+    for (double i = 0; i < worldSize; i += 100) {
+      canvas.drawLine(Offset(i, 0), Offset(i, worldSize), gridPaint);
+      canvas.drawLine(Offset(0, i), Offset(worldSize, i), gridPaint);
+    }
+
+    // Draw food
     for (var food in foods) {
       food.draw(canvas);
     }
 
+    // Draw bots
+    for (var bot in bots) {
+      final connectionPaint = Paint()
+        ..color = bot.color.withOpacity(0.4)
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round;
+
+      for (int i = 0; i < bot.snake.vertebrae.length - 1; i++) {
+        final v1 = bot.snake.vertebrae[i];
+        final v2 = bot.snake.vertebrae[i + 1];
+        canvas.drawLine(v1.position, v2.position, connectionPaint);
+      }
+
+      for (int i = bot.snake.vertebrae.length - 1; i >= 0; i--) {
+        bot.snake.vertebrae[i].draw(canvas, bot.snake.walkPhase);
+      }
+
+      bot.snake.drawTail(canvas);
+      bot.snake.drawSkull(canvas);
+    }
+
+    // Draw player snake
     final connectionPaint = Paint()
       ..color = const Color(0xFF555555)
       ..strokeWidth = 4
       ..strokeCap = StrokeCap.round;
 
-    for (int i = 0; i < snake.vertebrae.length - 1; i++) {
-      final v1 = snake.vertebrae[i];
-      final v2 = snake.vertebrae[i + 1];
+    for (int i = 0; i < playerSnake.vertebrae.length - 1; i++) {
+      final v1 = playerSnake.vertebrae[i];
+      final v2 = playerSnake.vertebrae[i + 1];
       canvas.drawLine(v1.position, v2.position, connectionPaint);
     }
 
-    for (int i = snake.vertebrae.length - 1; i >= 0; i--) {
-      snake.vertebrae[i].draw(canvas, snake.walkPhase);
+    for (int i = playerSnake.vertebrae.length - 1; i >= 0; i--) {
+      playerSnake.vertebrae[i].draw(canvas, playerSnake.walkPhase);
     }
 
-    snake.drawTail(canvas);
-    snake.drawSkull(canvas);
+    playerSnake.drawTail(canvas);
+    playerSnake.drawSkull(canvas);
+
+    canvas.restore();
   }
 
   @override
